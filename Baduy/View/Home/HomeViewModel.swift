@@ -1,15 +1,11 @@
 import CoreLocation
 import Observation
-import simd
 
 struct MapLandmark: Identifiable {
     let id: String
     let name: String
     let coordinate: CLLocationCoordinate2D
     var radius: CLLocationDistance = 25
-    var modelName: String? = nil
-    // Metres above the map origin's vertical datum, not GPS altitude.
-    var elevation: Float = 0
     var detail: String = ""
     var sourceURL: String? = nil
 
@@ -37,28 +33,89 @@ struct MapLandmark: Identifiable {
     ]
 }
 
-/// A small-area projection: metres, +X east, +Y up, -Z north.
-/// Keep this origin fixed and match it to the terrain's surveyed origin later.
-struct MapOrigin {
-    let coordinate: CLLocationCoordinate2D
-
-    func position(for coordinate: CLLocationCoordinate2D, elevation: Float = 0) -> SIMD3<Float> {
-        let radians = Double.pi / 180
-        let earthRadius = 6_378_137.0
-        let longitudeDelta = (coordinate.longitude - self.coordinate.longitude + 540)
-            .truncatingRemainder(dividingBy: 360) - 180
-        let east = longitudeDelta * radians * earthRadius * cos(self.coordinate.latitude * radians)
-        let north = (coordinate.latitude - self.coordinate.latitude) * radians * earthRadius
-        return SIMD3(Float(east), elevation, Float(-north))
-    }
-}
-
 @MainActor
 @Observable
 final class HomeViewModel: NSObject, CLLocationManagerDelegate {
-    private(set) var origin: MapOrigin?
+    /// Characters stay at their spawn point while the user walks towards them.
+    private(set) var encounterOrigin: CLLocationCoordinate2D?
     private(set) var location: CLLocation?
-    private(set) var playerPosition: SIMD3<Float>?
+    #if DEBUG
+    private(set) var isDebugMode = true
+    #else
+    private(set) var isDebugMode = false
+    #endif
+    private var debugStart: CLLocationCoordinate2D?
+
+    func setDebugMode(_ enabled: Bool) {
+        guard enabled != isDebugMode else { return }
+        locationManager.stopUpdatingLocation()
+        isDebugMode = enabled
+        encounterOrigin = nil
+        insideLandmarks.removeAll()
+        enteredLandmark = nil
+        if enabled {
+            debugStart = location?.coordinate
+            resetDebugPosition()
+        } else {
+            location = nil
+            debugStart = nil
+        }
+        start()
+    }
+
+    func resetDebugPosition() {
+        guard isDebugMode else { return }
+        encounterOrigin = nil
+        insideLandmarks.removeAll()
+        enteredLandmark = nil
+        let coordinate = debugStart ?? CLLocationCoordinate2D(latitude: -6.1754, longitude: 106.8272)
+        updateLocation(CLLocation(coordinate: coordinate, altitude: 0, horizontalAccuracy: 1,
+                                  verticalAccuracy: 1, timestamp: .now))
+    }
+
+    /// North-up movement, metres per second; diagonals have the same maximum speed.
+    func moveDebugPlayer(east: Double, north: Double, elapsed: TimeInterval) {
+        guard isDebugMode, isActive, let location else { return }
+        let magnitude = max(1, hypot(east, north))
+        let step = 8.0 * min(max(elapsed, 0), 0.1)
+        let latitude = min(85, max(-85, location.coordinate.latitude + north / magnitude * step / 111_320))
+        let longitude = location.coordinate.longitude + east / magnitude * step
+            / (111_320 * cos(latitude * .pi / 180))
+        updateLocation(CLLocation(coordinate: .init(latitude: latitude,
+            longitude: (longitude + 540).truncatingRemainder(dividingBy: 360) - 180),
+            altitude: 0, horizontalAccuracy: 1, verticalAccuracy: 1, timestamp: .now))
+    }
+
+    let interactionRadius: CLLocationDistance = 20
+
+    func coordinate(for character: BaduyCharacter) -> CLLocationCoordinate2D? {
+        guard location != nil else { return nil }
+        if isAtCiboleger == true { return character.coordinate }
+        guard let origin = encounterOrigin else { return nil }
+        let bearing = (character == .cowo ? 45.0 : 225.0) * .pi / 180
+        let angularDistance = 40.0 / 6_371_000
+        let latitude = origin.latitude * .pi / 180
+        let longitude = origin.longitude * .pi / 180
+        let targetLatitude = asin(sin(latitude) * cos(angularDistance)
+            + cos(latitude) * sin(angularDistance) * cos(bearing))
+        let targetLongitude = longitude + atan2(sin(bearing) * sin(angularDistance) * cos(latitude),
+            cos(angularDistance) - sin(latitude) * sin(targetLatitude))
+        return .init(latitude: targetLatitude * 180 / .pi,
+                     longitude: (targetLongitude * 180 / .pi + 540).truncatingRemainder(dividingBy: 360) - 180)
+    }
+
+    func distance(to character: BaduyCharacter) -> CLLocationDistance? {
+        guard let coordinate = coordinate(for: character) else { return nil }
+        return location?.distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
+    }
+
+    func canInteract(with character: BaduyCharacter, at date: Date = .now) -> Bool {
+        guard isActive, let location, location.horizontalAccuracy <= interactionRadius,
+              (isDebugMode || abs(location.timestamp.timeIntervalSince(date)) < 15),
+              let distance = distance(to: character) else { return false }
+        return distance <= interactionRadius
+    }
+
     private(set) var status = "Waiting for location…"
     /// nil means no usable GPS fix; use the existing Ciboleger POI radius.
     var isAtCiboleger: Bool? {
@@ -80,9 +137,8 @@ final class HomeViewModel: NSObject, CLLocationManagerDelegate {
     /// Called once on entry; leaving the radius rearms the event.
     @ObservationIgnored var onLandmarkEntered: ((MapLandmark) -> Void)?
 
-    init(origin: MapOrigin? = nil, landmarks: [MapLandmark] = [],
+    init(landmarks: [MapLandmark] = [],
          trails: [[CLLocationCoordinate2D]] = []) {
-        self.origin = origin ?? landmarks.first.map { MapOrigin(coordinate: $0.coordinate) }
         self.landmarks = landmarks
         self.trails = trails
         super.init()
@@ -98,6 +154,11 @@ final class HomeViewModel: NSObject, CLLocationManagerDelegate {
 
     func start() {
         isActive = true
+        if isDebugMode {
+            if location == nil { resetDebugPosition() }
+            status = "DEBUG · Gerakkan analog untuk berjalan"
+            return
+        }
         switch locationManager.authorizationStatus {
         case .notDetermined:
             locationManager.requestWhenInUseAuthorization()
@@ -106,7 +167,6 @@ final class HomeViewModel: NSObject, CLLocationManagerDelegate {
             locationManager.startUpdatingLocation()
         case .denied, .restricted:
             location = nil
-            playerPosition = nil
             status = "Location unavailable. Allow location access in Settings."
         @unknown default:
             status = "Location unavailable."
@@ -123,15 +183,19 @@ final class HomeViewModel: NSObject, CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.last,
+        guard !isDebugMode, isActive, let location = locations.last,
               location.horizontalAccuracy >= 0,
               location.horizontalAccuracy <= 50,
               abs(location.timestamp.timeIntervalSinceNow) < 15 else { return }
-        // With no surveyed map supplied, anchor this session at the first GPS fix.
-        if origin == nil { origin = MapOrigin(coordinate: location.coordinate) }
+        updateLocation(location)
+    }
+
+    private func updateLocation(_ location: CLLocation) {
         self.location = location
-        playerPosition = origin?.position(for: location.coordinate)
-        status = "GPS ±\(Int(location.horizontalAccuracy)) m"
+        if isAtCiboleger == false, encounterOrigin == nil, location.horizontalAccuracy <= interactionRadius {
+            encounterOrigin = location.coordinate
+        }
+        status = isDebugMode ? "DEBUG · Gerakkan analog untuk berjalan" : "GPS ±\(Int(location.horizontalAccuracy)) m"
         for landmark in landmarks {
             let center = CLLocation(latitude: landmark.coordinate.latitude,
                                     longitude: landmark.coordinate.longitude)
@@ -148,6 +212,7 @@ final class HomeViewModel: NSObject, CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        guard !isDebugMode else { return }
         status = "Location unavailable: \(error.localizedDescription)"
     }
 }

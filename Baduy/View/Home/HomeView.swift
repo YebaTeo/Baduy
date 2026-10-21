@@ -1,115 +1,120 @@
 import SwiftUI
-import RealityKit
+import MapKit
+import Combine
 
 struct HomeView: View {
     @State private var model: HomeViewModel
-    @State private var scene = MapScene()
-    @State private var yaw: Float = 0
-    @State private var distance: Float = 180
-    @GestureState private var drag: CGFloat = 0
-    @GestureState private var magnification: CGFloat = 1
-    @State private var dragStartYaw: Float?
+    @State private var position: MapCameraPosition
+    @State private var joystick = CGSize.zero
+    @State private var lastMovementTick = Date.now
+    @State private var didFocusUser = false
+    @State private var interactionDate = Date.now
+    @State private var selectedCharacter: BaduyCharacter?
+    @State private var arCharacter: BaduyCharacter?
     @Environment(\.scenePhase) private var scenePhase
 
-    // USDZ must use metres and the same geographic/vertical origin as the model.
-    // Supply its surveyed rotation, scale, and offset using terrainTransform.
-    private let terrainName: String?
-    private let terrainTransform: Transform
-
-    init(model: HomeViewModel? = nil, terrainName: String? = nil,
-         terrainTransform: Transform = .identity) {
-        _model = State(initialValue: model ?? HomeViewModel(landmarks: MapLandmark.baduyPoints))
-        self.terrainName = terrainName
-        self.terrainTransform = terrainTransform
+    init(model: HomeViewModel? = nil) {
+        let model = model ?? HomeViewModel(landmarks: MapLandmark.baduyPoints)
+        _model = State(initialValue: model)
+        _position = State(initialValue: .region(MKCoordinateRegion(
+            center: model.landmarks.first?.coordinate ?? MapLandmark.baduyPoints[0].coordinate,
+            latitudinalMeters: 2_500, longitudinalMeters: 2_500)))
     }
 
     var body: some View {
-        Group {
-            if model.isAtCiboleger == true {
-                mapView
-                    .onDisappear { scene = MapScene() }
-            } else {
-                BaduyInvitationView(locationVerified: model.isAtCiboleger != nil)
-            }
-        }
-        .onAppear { model.start() }
-        .onDisappear { model.stop() }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { model.start() } else { model.stop() }
-        }
-    }
-
-    private var mapView: some View {
-        RealityView { content in
-            content.camera = .virtual
-            content.cameraTarget = scene.cameraEntity
-            content.add(scene.root)
-            scene.update(model: model, yaw: yaw, distance: distance)
-            // Keep the camera and drag gestures live while USDZ files decode.
-            Task { @MainActor in
-                await scene.loadAssets(model: model, terrainName: terrainName,
-                                       terrainTransform: terrainTransform)
-                scene.update(model: model, yaw: yaw, distance: distance)
-            }
-        } update: { _ in
-            scene.update(model: model, yaw: yaw + Float(drag) * 0.008,
-                         distance: zoomDistance(magnification))
-        }
-        .gesture(SpatialTapGesture().targetedToAnyEntity().onEnded { value in
-            var entity: Entity? = value.entity
-            while let current = entity {
-                if let landmark = model.landmarks.first(where: { $0.id == current.name }) {
-                    model.selectedLandmark = landmark
-                    break
+        Map(position: $position, interactionModes: [.pan, .zoom]) {
+            if model.isDebugMode {
+                if let location = model.location {
+                    Annotation("Anda · Debug", coordinate: location.coordinate) {
+                        Image(systemName: "figure.walk.circle.fill")
+                            .font(.largeTitle).foregroundStyle(.white, .blue)
+                            .background(.white, in: Circle())
+                    }
                 }
-                entity = current.parent
+            } else {
+                UserAnnotation()
             }
-        })
-        .simultaneousGesture(DragGesture(minimumDistance: 8)
-            .onChanged { value in
-                if dragStartYaw == nil { dragStartYaw = yaw }
-                yaw = (dragStartYaw ?? yaw) + Float(value.translation.width) * 0.008
-                scene.update(model: model, yaw: yaw, distance: zoomDistance(magnification))
+            ForEach(model.landmarks) { landmark in
+                Annotation(landmark.name, coordinate: landmark.coordinate) {
+                    Button { select(landmark) } label: {
+                        Image(systemName: "mappin.circle.fill")
+                            .font(.title)
+                            .foregroundStyle(.white, model.selectedLandmark?.id == landmark.id ? .blue : .orange)
+                            .padding(6).background(.regularMaterial, in: Circle())
+                    }
+                    .accessibilityLabel(landmark.name)
+                }
             }
-            .onEnded { _ in dragStartYaw = nil })
-        .simultaneousGesture(MagnifyGesture()
-            .updating($magnification) { value, state, _ in state = value.magnification }
-            .onChanged { value in
-                scene.update(model: model, yaw: yaw, distance: zoomDistance(value.magnification))
+            ForEach(BaduyCharacter.allCases) { character in
+                if let coordinate = model.coordinate(for: character) {
+                    Annotation(character.title, coordinate: coordinate) {
+                        Button { interact(with: character) } label: {
+                            CharacterMapIcon(character: character,
+                                unlocked: model.canInteract(with: character, at: interactionDate))
+                        }
+                        .disabled(!model.canInteract(with: character, at: interactionDate))
+                        .accessibilityLabel("\(character.title), \(interactionDescription(character))")
+                    }
+                }
             }
-            .onEnded { distance = zoomDistance($0.magnification) })
+            ForEach(model.trails.indices, id: \.self) { index in
+                MapPolyline(coordinates: model.trails[index]).stroke(.orange, lineWidth: 4)
+            }
+        }
+        .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
         .overlay(alignment: .topLeading) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Baduy Map").font(.headline)
-                Text(model.status).font(.caption)
-                if let error = scene.assetError { Text(error).font(.caption) }
+                Text("Peta Baduy").font(.headline)
+                Text(model.isAtCiboleger == true ? "Jelajahi Baduy" : "Temui dua karakter di sekitar Anda").font(.subheadline)
+                Text(model.status).font(.caption).foregroundStyle(.secondary)
+                #if DEBUG
+                Toggle("Debug analog", isOn: Binding(get: { model.isDebugMode }, set: { enabled in
+                    joystick = .zero
+                    selectedCharacter = nil
+                    didFocusUser = false
+                    model.setDebugMode(enabled)
+                    if let location = model.location { focus(on: location.coordinate, metres: 220) }
+                }))
+                #endif
             }
-            .padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
             .padding()
         }
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Points of interest").font(.headline)
-                    Spacer()
-                    Button {
-                        model.selectedLandmark = nil
-                    } label: {
-                        Label("My location", systemImage: "location.fill")
+                if model.isDebugMode {
+                    HStack {
+                        DebugJoystick(direction: $joystick)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Analog · 8 m/detik").font(.caption)
+                            Text("Atas = utara").font(.caption).foregroundStyle(.secondary)
+                            Button("Reset posisi") {
+                                joystick = .zero
+                                selectedCharacter = nil
+                                model.resetDebugPosition()
+                                if let location = model.location { focus(on: location.coordinate, metres: 220) }
+                            }
+                        }
+                        Spacer()
                     }
-                    .disabled(model.playerPosition == nil)
+                }
+                HStack {
+                    Button("Ke Baduy", systemImage: "map") {
+                        focus(on: MapLandmark.baduyPoints[0].coordinate, metres: 2_500)
+                    }
+                    Spacer()
+                    Button("Lokasi saya", systemImage: "location.fill") {
+                        guard let location = model.location else { return }
+                        model.selectedLandmark = nil
+                        focus(on: location.coordinate, metres: 220)
+                    }.disabled(model.location == nil)
                 }
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack {
                         ForEach(model.landmarks) { landmark in
-                            Button {
-                                model.selectedLandmark = landmark
-                            } label: {
-                                Label(landmark.name, systemImage: "mappin.circle.fill")
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(model.selectedLandmark?.id == landmark.id ? .blue : .primary)
-                            .accessibilityAddTraits(model.selectedLandmark?.id == landmark.id ? .isSelected : [])
+                            Button(landmark.name) { select(landmark) }
+                                .buttonStyle(.bordered)
+                                .tint(model.selectedLandmark?.id == landmark.id ? .blue : .primary)
                         }
                     }
                 }
@@ -118,169 +123,104 @@ struct HomeView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(landmark.name).font(.headline)
                             Text(landmark.detail).font(.subheadline)
-                            Text("Arrival radius: \(Int(landmark.radius)) m").font(.caption)
                             if let metres = model.distance(to: landmark) {
-                                Text(metres < 1_000
-                                     ? "\(Int(metres)) m away"
-                                     : "\((metres / 1_000).formatted(.number.precision(.fractionLength(1)))) km away")
+                                Text(metres < 1_000 ? "\(Int(metres)) m dari lokasi Anda" : "\((metres / 1_000).formatted(.number.precision(.fractionLength(1)))) km dari lokasi Anda")
                                     .font(.caption)
                             }
                             if let source = landmark.sourceURL, let url = URL(string: source) {
-                                Link("Location reference", destination: url).font(.caption)
+                                Link("Referensi lokasi", destination: url).font(.caption)
                             }
                         }
                         Spacer()
-                        Button("Close") { model.selectedLandmark = nil }
+                        Button("Tutup") { model.selectedLandmark = nil }
+                    }
+                }
+                Text(model.isAtCiboleger == false ? "Dekati hingga 20 m, lalu ketuk karakter untuk masuk ruang AR." : "Dekati karakter hingga 20 m untuk berbincang.")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    ForEach(BaduyCharacter.allCases) { character in
+                        Button { interact(with: character) } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(character.title)
+                                Text(interactionDescription(character)).font(.caption)
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(!model.canInteract(with: character, at: interactionDate))
                     }
                 }
             }
-            .padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+            .padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
             .padding()
         }
+        .fullScreenCover(item: $arCharacter) { character in
+            ARCharacterRoom(initialCharacter: character)
+        }
+        .sheet(item: $selectedCharacter) { character in
+            CharacterConversationView(character: character)
+        }
         .alert(item: $model.enteredLandmark) { landmark in
-            Alert(title: Text(landmark.name), message: Text("You entered this landmark’s radius."),
+            Alert(title: Text(landmark.name), message: Text("Anda memasuki radius lokasi ini."),
                   dismissButton: .default(Text("OK")))
         }
+        .onChange(of: selectedCharacter) { _, _ in joystick = .zero }
+        .onReceive(Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()) { date in
+            let elapsed = date.timeIntervalSince(lastMovementTick)
+            lastMovementTick = date
+            guard scenePhase == .active, selectedCharacter == nil, arCharacter == nil, joystick != .zero else { return }
+            model.moveDebugPlayer(east: Double(joystick.width), north: -Double(joystick.height), elapsed: elapsed)
+        }
+        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { date in
+            interactionDate = date
+            if let selectedCharacter, !model.canInteract(with: selectedCharacter, at: date) {
+                self.selectedCharacter = nil
+            }
+        }
+        .onChange(of: model.location) { _, location in
+            interactionDate = .now
+            if let location, !didFocusUser {
+                didFocusUser = true
+                focus(on: location.coordinate, metres: 220)
+            }
+            if let selectedCharacter, !model.canInteract(with: selectedCharacter) {
+                self.selectedCharacter = nil
+            }
+        }
+        .onAppear { model.start() }
+        .onDisappear { joystick = .zero; model.stop() }
+        .onChange(of: scenePhase) { _, phase in
+            joystick = .zero
+            lastMovementTick = .now
+            if phase == .active { model.start() } else { model.stop() }
+        }
     }
 
-    private func zoomDistance(_ magnification: CGFloat) -> Float {
-        min(600, max(30, distance / Float(max(0.1, magnification))))
-    }
-}
-
-@MainActor
-@Observable
-private final class MapScene {
-    let root = Entity()
-    private let camera = PerspectiveCamera()
-    var cameraEntity: Entity { camera }
-    private let player = ModelEntity(mesh: .generateSphere(radius: 3),
-                                     materials: [UnlitMaterial(color: .systemBlue)])
-    private let ground = ModelEntity(mesh: .generatePlane(width: 2_000, depth: 2_000),
-                                     materials: [UnlitMaterial(color: .init(red: 0.5, green: 0.68, blue: 0.4, alpha: 1))])
-    private let mapContent = Entity()
-    private var landmarkEntities: [String: Entity] = [:]
-    private var characterEntities: [BaduyCharacter: Entity] = [:]
-    private var didPlaceMap = false
-    private var assetsLoaded = false
-    private(set) var assetError: String?
-
-    init() {
-        camera.camera.far = 20_000
-        root.addChild(camera)
-        root.addChild(ground)
-        root.addChild(mapContent)
-        root.addChild(player)
-        player.isEnabled = false
-        let light = DirectionalLight()
-        light.light.intensity = 3_000
-        light.orientation = simd_quatf(angle: -.pi / 3, axis: [1, 0, 0])
-        root.addChild(light)
+    private func interact(with character: BaduyCharacter) {
+        guard model.canInteract(with: character) else { return }
+        joystick = .zero
+        if model.isAtCiboleger == false {
+            arCharacter = character
+        } else {
+            selectedCharacter = character
+        }
     }
 
-    func loadAssets(model: HomeViewModel, terrainName: String?, terrainTransform: Transform) async {
-        if let terrainName {
-            do {
-                let terrain = try await Entity(named: terrainName)
-                terrain.transform = terrainTransform
-                root.addChild(terrain)
-                ground.isEnabled = false
-            } catch {
-                assetError = "Could not load terrain: \(terrainName)"
-            }
-        }
-        for landmark in model.landmarks {
-            let entity: Entity
-            if let name = landmark.modelName {
-                do { entity = try await Entity(named: name) }
-                catch {
-                    assetError = "Could not load landmark: \(name)"
-                    entity = marker()
-                }
-            } else {
-                entity = marker()
-            }
-            entity.name = landmark.id
-            entity.generateCollisionShapes(recursive: true)
-            entity.components.set(InputTargetComponent())
-            landmarkEntities[landmark.id] = entity
-            mapContent.addChild(entity)
-        }
-        // The two map characters are code-built so the map is visible even
-        // without waiting for the optional USDZ assets.
-        for character in BaduyCharacter.allCases {
-            let entity: Entity
-            do {
-                // Use the same normalized USDZ asset as the camera AR room.
-                entity = try await character.makeEntity(height: 1.5)
-            } catch {
-                assetError = "Gagal memuat \(character.rawValue).usdz: \(error.localizedDescription)"
-                continue
-            }
-            entity.name = "map-\(character.rawValue)"
-            characterEntities[character] = entity
-            mapContent.addChild(entity)
-        }
-        assetsLoaded = true
+    private func interactionDescription(_ character: BaduyCharacter) -> String {
+        guard let distance = model.distance(to: character) else { return "Menunggu GPS akurat…" }
+        if model.canInteract(with: character, at: interactionDate) { return model.isAtCiboleger == false ? "Masuk ruang AR" : "Ayo berbincang" }
+        if distance <= model.interactionRadius { return "Menunggu GPS akurat…" }
+        return "\(Int(distance)) m · terkunci"
     }
 
-    func update(model: HomeViewModel, yaw: Float, distance: Float) {
-        if assetsLoaded, !didPlaceMap, let origin = model.origin {
-            for landmark in model.landmarks {
-                landmarkEntities[landmark.id]?.position = origin.position(
-                    for: landmark.coordinate, elevation: landmark.elevation)
-            }
-            let characterCoordinates: [BaduyCharacter: CLLocationCoordinate2D] = [
-                .cowo: .init(latitude: -6.5948, longitude: 106.2259),
-                .cewe: .init(latitude: -6.5953, longitude: 106.2262)
-            ]
-            for (character, coordinate) in characterCoordinates {
-                characterEntities[character]?.position = origin.position(for: coordinate, elevation: 0)
-            }
-            for trail in model.trails {
-                for (start, end) in zip(trail, trail.dropFirst()) {
-                    let a = origin.position(for: start, elevation: 0.15)
-                    let b = origin.position(for: end, elevation: 0.15)
-                    let length = simd_distance(a, b)
-                    guard length > 0.01 else { continue }
-                    let segment = ModelEntity(mesh: .generateBox(size: [2, 0.2, length]),
-                                              materials: [UnlitMaterial(color: .systemYellow)])
-                    segment.position = (a + b) / 2
-                    segment.orientation = simd_quatf(from: [0, 0, 1], to: simd_normalize(b - a))
-                    mapContent.addChild(segment)
-                }
-            }
-            didPlaceMap = true
-        }
-        let selectedPosition = model.selectedLandmark.flatMap { landmark in
-            model.origin?.position(for: landmark.coordinate, elevation: landmark.elevation)
-        }
-        let target = selectedPosition ?? model.playerPosition ?? .zero
-        for (id, entity) in landmarkEntities {
-            if let head = entity.findEntity(named: "poi-head") as? ModelEntity {
-                head.model?.materials = [UnlitMaterial(color: model.selectedLandmark?.id == id
-                                                       ? .systemYellow : .systemOrange)]
-            }
-        }
-        player.isEnabled = model.playerPosition != nil
-        player.position = (model.playerPosition ?? .zero) + SIMD3(0, 3, 0)
-        // Keep the placeholder ground underneath the current camera focus.
-        ground.position = target
-        camera.look(at: target, from: target + SIMD3(sin(yaw) * distance,
-                    distance * 0.9, cos(yaw) * distance), relativeTo: nil)
+    private func select(_ landmark: MapLandmark) {
+        model.selectedLandmark = landmark
+        focus(on: landmark.coordinate, metres: 600)
     }
 
-    private func marker() -> Entity {
-        let pin = Entity()
-        let stem = ModelEntity(mesh: .generateCylinder(height: 10, radius: 0.8),
-                               materials: [UnlitMaterial(color: .white)])
-        stem.position.y = 5
-        let head = ModelEntity(mesh: .generateSphere(radius: 4),
-                               materials: [UnlitMaterial(color: .systemOrange)])
-        head.name = "poi-head"
-        head.position.y = 12
-        pin.addChild(stem)
-        pin.addChild(head)
-        return pin
+    private func focus(on coordinate: CLLocationCoordinate2D, metres: CLLocationDistance) {
+        withAnimation {
+            position = .region(MKCoordinateRegion(center: coordinate,
+                latitudinalMeters: metres, longitudinalMeters: metres))
+        }
     }
 }

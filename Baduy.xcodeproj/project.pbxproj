@@ -246,7 +246,7 @@
 				DEVELOPMENT_TEAM = DTTY9ZX5T4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Kamera digunakan di ruang kedua untuk menampilkan pengalaman AR ajakan berkunjung ke Baduy.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Kamera digunakan untuk bertemu Akang dan Teteh di ruang AR setelah mendekati karakter pada peta.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Your location moves your player on the Baduy map and detects nearby landmarks.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -280,7 +280,7 @@
 				DEVELOPMENT_TEAM = DTTY9ZX5T4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Kamera digunakan di ruang kedua untuk menampilkan pengalaman AR ajakan berkunjung ke Baduy.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Kamera digunakan untuk bertemu Akang dan Teteh di ruang AR setelah mendekati karakter pada peta.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Your location moves your player on the Baduy map and detects nearby landmarks.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
