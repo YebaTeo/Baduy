@@ -35,6 +35,23 @@ struct BaduyMapView: UIViewRepresentable {
         init(model: HomeViewModel,onLandmark:@escaping(MapLandmark)->Void,onCharacter:@escaping(BaduyCharacter)->Void){self.model=model;self.onLandmark=onLandmark;self.onCharacter=onCharacter}
         func build() {
             if let terrain = try? awsTerrain.entity() { anchor.addChild(terrain) }
+            let featuredBuilding = SettlementData.displayedBuildings.min {
+                simd_length_squared(SIMD2<Float>($0.position.x, $0.position.z)) <
+                simd_length_squared(SIMD2<Float>($1.position.x, $1.position.z))
+            }
+            let featuredLumbung: MapLandmark? = featuredBuilding.map { building in
+                MapLandmark(
+                    id: "lumbung_padi_demo",
+                    name: "Lumbung Padi",
+                    coordinate: BaduyWorld.coordinate(building.position),
+                    radius: 25,
+                    detail: "Kenali fungsi lumbung padi tradisional dalam kehidupan masyarakat Kanekes."
+                )
+            }
+            if let featuredLumbung {
+                selectable[featuredLumbung.id] = featuredLumbung
+                addLocationLabel(featuredLumbung.name, subtitle: "Ketuk untuk menjelajah", coordinate: featuredLumbung.coordinate)
+            }
             Task { @MainActor in
                 #if targetEnvironment(simulator)
                 for b in SettlementData.displayedBuildings {
@@ -53,6 +70,11 @@ struct BaduyMapView: UIViewRepresentable {
                     // a neighboring DEM triangle.
                     lumbung.position = [ground.x, surface + 2, ground.z]
                     lumbung.orientation = simd_quatf(angle: b.rotationY, axis: [0, 1, 0])
+                    if b.id == featuredBuilding?.id, let featuredLumbung {
+                        lumbung.name = featuredLumbung.id
+                        lumbung.generateCollisionShapes(recursive: true)
+                        lumbung.components.set(InputTargetComponent())
+                    }
                     anchor.addChild(lumbung)
                 }
                 return
@@ -76,6 +98,11 @@ struct BaduyMapView: UIViewRepresentable {
                     // Measure before attaching to the world so the bounds are local.
                     let localBounds = lumbung.visualBounds(relativeTo: lumbung)
                     lumbung.position.y = surface - localBounds.min.y * lumbung.scale.y + 0.2
+                    if b.id == featuredBuilding?.id, let featuredLumbung {
+                        lumbung.name = featuredLumbung.id
+                        lumbung.generateCollisionShapes(recursive: true)
+                        lumbung.components.set(InputTargetComponent())
+                    }
                     anchor.addChild(lumbung)
                 }
                 #endif
