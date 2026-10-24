@@ -29,27 +29,27 @@ struct HomeView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Kanekes Village")
                             .font(.system(size: 27, weight: .bold, design: .rounded))
-                            .foregroundStyle(Color(red: 0.04, green: 0.16, blue: 0.36))
+                            .foregroundStyle(Color(red: 0.05, green: 0.22, blue: 0.32))
                         Text("Leuwidamar, Lebak, Banten")
                             .font(.system(size: 16, weight: .regular))
-                            .foregroundStyle(Color(red: 0.08, green: 0.25, blue: 0.50))
+                            .foregroundStyle(Color(red: 0.22, green: 0.40, blue: 0.39))
                     }
                     Spacer()
                     Image(systemName: "person.fill")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(Color(red: 0.04, green: 0.18, blue: 0.38))
                         .frame(width: 52, height: 52)
-                        .background(Color.white.opacity(0.92), in: Circle())
+                        .background(Color(red: 0.98, green: 0.95, blue: 0.87).opacity(0.96), in: Circle())
                         .overlay(Circle().stroke(.gray.opacity(0.18), lineWidth: 1))
                 }
                 .padding(.horizontal, 26)
                 .padding(.vertical, 18)
-                .background(Color.white.opacity(0.96), in: UnevenRoundedRectangle(bottomLeadingRadius: 30, bottomTrailingRadius: 30))
+                .background(Color(red: 0.98, green: 0.96, blue: 0.90).opacity(0.97), in: UnevenRoundedRectangle(bottomLeadingRadius: 30, bottomTrailingRadius: 30))
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         mapChip("♨  Pertanian", color: Color(red: 0.10, green: 0.40, blue: 0.25))
-                        mapChip("🧺  Perdagangan", color: .black)
+                        mapChip("🧺  Perdagangan", color: Color(red: 0.68, green: 0.35, blue: 0.22))
                         mapChip("▣  Tradisi", color: Color(red: 0.03, green: 0.16, blue: 0.38))
                     }
                     .padding(.horizontal, 16)

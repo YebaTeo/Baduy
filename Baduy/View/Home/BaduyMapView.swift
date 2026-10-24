@@ -13,7 +13,7 @@ struct BaduyMapView: UIViewRepresentable {
         #if targetEnvironment(simulator)
         view.renderOptions.insert(.disableGroundingShadows)
         #endif
-        view.environment.background = .color(UIColor(red: 0.82, green: 0.80, blue: 0.74, alpha: 1))
+        view.environment.background = .color(UIColor(red: 0.94, green: 0.91, blue: 0.82, alpha: 1))
         let c = context.coordinator; c.view = view
         let anchor = AnchorEntity(world: .zero); c.anchor = anchor; view.scene.addAnchor(anchor); c.build()
         anchor.addChild(c.camera); c.updateCamera()
@@ -58,10 +58,6 @@ struct BaduyMapView: UIViewRepresentable {
                     let coordinate = BaduyWorld.coordinate(b.position)
                     let ground = awsTerrain.point(coordinate)
                     let surface = awsTerrain.buildingSurface(coordinate, halfWidth: 5.5, halfDepth: 4.5, rotation: b.rotationY)
-                    let foundation = ModelEntity(mesh: .generateBox(size: [11, 0.35, 9]), materials: [UnlitMaterial(color: UIColor(red: 0.18, green: 0.12, blue: 0.08, alpha: 1))])
-                    foundation.position = [ground.x, surface + 0.18, ground.z]
-                    foundation.orientation = simd_quatf(angle: b.rotationY, axis: [0, 1, 0])
-                    anchor.addChild(foundation)
                     let lumbung = Self.makeSimulatorLumbung()
                     lumbung.name = b.id
                     // Keep the full footprint above the sampled DEM. The terrain
@@ -90,10 +86,6 @@ struct BaduyMapView: UIViewRepresentable {
                     let coordinate = BaduyWorld.coordinate(b.position)
                     let ground = awsTerrain.point(coordinate)
                     let surface = awsTerrain.buildingSurface(coordinate, halfWidth: Float(b.size.x), halfDepth: Float(b.size.z), rotation: b.rotationY)
-                    let foundation = ModelEntity(mesh: .generateBox(size: [b.size.x * 2, 0.35, b.size.z * 2]), materials: [UnlitMaterial(color: UIColor(red: 0.18, green: 0.12, blue: 0.08, alpha: 1))])
-                    foundation.position = [ground.x, surface + 0.18, ground.z]
-                    foundation.orientation = simd_quatf(angle: b.rotationY, axis: [0, 1, 0])
-                    anchor.addChild(foundation)
                     lumbung.position = ground
                     // Measure before attaching to the world so the bounds are local.
                     let localBounds = lumbung.visualBounds(relativeTo: lumbung)
@@ -139,7 +131,7 @@ struct BaduyMapView: UIViewRepresentable {
             )
             let titleEntity = ModelEntity(
                 mesh: titleMesh,
-                materials: [UnlitMaterial(color: UIColor(red: 0.96, green: 0.92, blue: 0.78, alpha: 1))]
+                materials: [UnlitMaterial(color: UIColor(red: 0.05, green: 0.20, blue: 0.31, alpha: 1))]
             )
             titleEntity.position = [-44, 1.2, 0.3]
             root.addChild(titleEntity)
@@ -154,14 +146,14 @@ struct BaduyMapView: UIViewRepresentable {
             )
             let subtitleEntity = ModelEntity(
                 mesh: subtitleMesh,
-                materials: [UnlitMaterial(color: UIColor(red: 0.76, green: 0.81, blue: 0.78, alpha: 1))]
+                materials: [UnlitMaterial(color: UIColor(red: 0.37, green: 0.39, blue: 0.31, alpha: 1))]
             )
             subtitleEntity.position = [-44, -5.2, 0.3]
             root.addChild(subtitleEntity)
 
             let plate = ModelEntity(
                 mesh: .generateBox(size: [94, 18, 0.7], cornerRadius: 2.5),
-                materials: [UnlitMaterial(color: UIColor(red: 0.035, green: 0.09, blue: 0.14, alpha: 0.92))]
+                materials: [UnlitMaterial(color: UIColor(red: 0.98, green: 0.93, blue: 0.80, alpha: 0.96))]
             )
             plate.position = [0, 0, 0]
             root.addChild(plate)

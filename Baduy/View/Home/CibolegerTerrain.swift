@@ -110,11 +110,11 @@ final class CibolegerTerrain {
             material.color = .init(tint: .white, texture: .init(texture))
             result.addChild(ModelEntity(mesh: terrainMesh, materials: [material]))
         } else {
-            result.addChild(ModelEntity(mesh: terrainMesh, materials: [UnlitMaterial(color: UIColor(red:0.035,green:0.09,blue:0.16,alpha:1))]))
+            result.addChild(ModelEntity(mesh: terrainMesh, materials: [UnlitMaterial(color: UIColor(red:0.25,green:0.43,blue:0.33,alpha:1))]))
         }
         // Keep the contour overlay lightweight for Metal Simulator.
         if !contourIndices.isEmpty && contourIndices.count <= 12_000 {
-            result.addChild(try Self.mesh(contours, contourIndices, color: UIColor(red:0.16,green:0.26,blue:0.33,alpha:1)))
+            result.addChild(try Self.mesh(contours, contourIndices, color: UIColor(red:0.055,green:0.18,blue:0.25,alpha:0.64)))
         }
         try addRoads(to: result)
         return result
@@ -133,7 +133,7 @@ final class CibolegerTerrain {
             }
         }
         if !indices.isEmpty {
-            parent.addChild(try Self.mesh(vertices, indices, color: UIColor(red: 0.82, green: 0.76, blue: 0.60, alpha: 1)))
+            parent.addChild(try Self.mesh(vertices, indices, color: UIColor(red: 0.91, green: 0.82, blue: 0.62, alpha: 1)))
         }
     }
     private struct Collection: Decodable { let features: [Feature] }

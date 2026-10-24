@@ -11,8 +11,8 @@ enum TerrainTexture {
         let image = renderer.image { context in
             let cg = context.cgContext
 
-            // 1. BASE BACKGROUND: Vintage parchment / aged map paper
-            let parchmentColor = UIColor(red: 0.88, green: 0.84, blue: 0.76, alpha: 1.0)
+            // Baduy palette: bamboo paper, forest green, and woven-cloth indigo.
+            let parchmentColor = UIColor(red: 0.94, green: 0.88, blue: 0.72, alpha: 1.0)
             cg.setFillColor(parchmentColor.cgColor)
             cg.fill(CGRect(x: 0, y: 0, width: size, height: size))
 
@@ -40,10 +40,12 @@ enum TerrainTexture {
                         let contour = abs(terrainHeight / 3 - (terrainHeight / 3).rounded()) < 0.025 ? -0.045 : 0.0
                         let grain = (sin(Float(x * 17 + y * 43)) * 0.04) + (cos(Float(x * 37 - y * 19)) * 0.03)
 
-                        // Rich Deep Indigo gradient: Inner dark navy/charcoal (#131E2A) -> Rim deep slate blue (#22384B)
-                        let r = max(0, min(1, 0.07 + Double(depthRatio) * 0.28 + Double(grain) * 0.4 + relief + contour))
-                        let g = max(0, min(1, 0.15 + Double(depthRatio) * 0.25 + Double(grain) * 0.4 + relief + contour))
-                        let b = max(0, min(1, 0.21 + Double(depthRatio) * 0.13 + Double(grain) * 0.4 + relief + contour))
+                        // Lower ground is deep forest green; ridges become a
+                        // warm leaf green. This keeps relief readable while
+                        // matching natural Baduy materials.
+                        let r = max(0, min(1, 0.18 + Double(depthRatio) * 0.27 + Double(grain) * 0.25 + relief + contour))
+                        let g = max(0, min(1, 0.32 + Double(depthRatio) * 0.28 + Double(grain) * 0.30 + relief + contour))
+                        let b = max(0, min(1, 0.27 + Double(depthRatio) * 0.12 + Double(grain) * 0.20 + relief + contour))
 
                         UIColor(red: r, green: g, blue: b, alpha: 1).setFill()
                         cg.fill(CGRect(x: x, y: y, width: 2, height: 2))
@@ -51,8 +53,44 @@ enum TerrainTexture {
                 }
             }
 
+            // Subtle woven-diamond texture inspired by Baduy textile motifs.
+            // Low opacity prevents the motif from competing with roads, DEM
+            // contours, houses, and location labels.
+            cg.saveGState()
+            cg.setStrokeColor(UIColor(red: 0.035, green: 0.13, blue: 0.23, alpha: 0.10).cgColor)
+            cg.setLineWidth(2)
+            let motifSpacing: CGFloat = 128
+            let motifRadius: CGFloat = 13
+            var row = 0
+            var motifY: CGFloat = 72
+            while motifY < CGFloat(size) {
+                var motifX: CGFloat = row.isMultiple(of: 2) ? 72 : 136
+                while motifX < CGFloat(size) {
+                    let diamond = UIBezierPath()
+                    diamond.move(to: CGPoint(x: motifX, y: motifY - motifRadius))
+                    diamond.addLine(to: CGPoint(x: motifX + motifRadius, y: motifY))
+                    diamond.addLine(to: CGPoint(x: motifX, y: motifY + motifRadius))
+                    diamond.addLine(to: CGPoint(x: motifX - motifRadius, y: motifY))
+                    diamond.close()
+                    diamond.stroke()
+
+                    let inner = UIBezierPath()
+                    let innerRadius = motifRadius * 0.45
+                    inner.move(to: CGPoint(x: motifX, y: motifY - innerRadius))
+                    inner.addLine(to: CGPoint(x: motifX + innerRadius, y: motifY))
+                    inner.addLine(to: CGPoint(x: motifX, y: motifY + innerRadius))
+                    inner.addLine(to: CGPoint(x: motifX - innerRadius, y: motifY))
+                    inner.close()
+                    inner.stroke()
+                    motifX += motifSpacing
+                }
+                row += 1
+                motifY += motifSpacing
+            }
+            cg.restoreGState()
+
             // 3. TREE CLUSTER TEXTURES (Stippled forest foliage matching the woodblock print)
-            cg.setFillColor(UIColor(red: 0.18, green: 0.28, blue: 0.36, alpha: 0.7).cgColor)
+            cg.setFillColor(UIColor(red: 0.055, green: 0.22, blue: 0.16, alpha: 0.62).cgColor)
             for i in 0..<260 {
                 let seed = Float(i) * 1.618
                 let fx = sin(seed * 7.1) * 115.0 + 30.0
@@ -63,7 +101,7 @@ enum TerrainTexture {
             }
 
             // 4. WATERWAYS & RIVERS (Sungai Ciujung flowing between Ciboleger & Kaduketug)
-            let riverColor = UIColor(red: 0.44, green: 0.64, blue: 0.76, alpha: 0.92)
+            let riverColor = UIColor(red: 0.27, green: 0.53, blue: 0.64, alpha: 0.94)
             cg.setLineCap(.round)
             cg.setLineJoin(.round)
 
@@ -104,40 +142,9 @@ enum TerrainTexture {
                 cg.fillEllipse(in: CGRect(x: centerPt.x - 3.5, y: centerPt.y - 3.5, width: 7, height: 7))
             }
 
-            // 6. 2D BUILDING FOOTPRINT PLOTS
-            func drawBuildingFootprint(at pos: SIMD3<Float>, width: CGFloat, height: CGFloat, angle: CGFloat) {
-                let pt = toPoint(pos)
-                cg.saveGState()
-                cg.translateBy(x: pt.x, y: pt.y)
-                cg.rotate(by: angle)
-
-                // Dark outline
-                let rect = CGRect(x: -width/2, y: -height/2, width: width, height: height)
-                UIColor(red: 0.08, green: 0.11, blue: 0.15, alpha: 0.9).setFill()
-                cg.fill(rect.insetBy(dx: -1.5, dy: -1.5))
-
-                // Light cream/straw roof tone matching the illustrated map
-                UIColor(red: 0.92, green: 0.86, blue: 0.72, alpha: 1.0).setFill()
-                cg.fill(rect)
-
-                // Ridge line
-                UIColor(red: 0.28, green: 0.22, blue: 0.16, alpha: 0.85).setStroke()
-                cg.setLineWidth(1.2)
-                cg.strokeLineSegments(between: [CGPoint(x: -width/2, y: 0), CGPoint(x: width/2, y: 0)])
-                cg.restoreGState()
-            }
-
-            for building in SettlementData.displayedBuildings {
-                drawBuildingFootprint(
-                    at: building.position,
-                    width: CGFloat(building.size.x * 2.2),
-                    height: CGFloat(building.size.z * 2.2),
-                    angle: CGFloat(building.rotationY)
-                )
-            }
-
-            // 7. ENCLAVE LABELS & VINTAGE BORDER
-            let borderStroke = UIColor(red: 0.14, green: 0.20, blue: 0.28, alpha: 0.85)
+            // Buildings are rendered only as RealityKit lumbung models.
+            // 6. VINTAGE BORDER
+            let borderStroke = UIColor(red: 0.035, green: 0.13, blue: 0.23, alpha: 0.86)
             borderStroke.setStroke()
             cg.setLineWidth(2.5)
             cg.stroke(CGRect(x: 14, y: 14, width: size - 28, height: size - 28))
