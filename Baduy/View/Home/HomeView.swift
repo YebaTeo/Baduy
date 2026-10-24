@@ -22,51 +22,57 @@ struct HomeView: View {
     }
 
     var body: some View {
-        Map(position: $position, interactionModes: [.pan, .zoom]) {
-            if model.isDebugMode {
-                if let location = model.location {
-                    Annotation("Anda · Debug", coordinate: location.coordinate) {
-                        Image(systemName: "figure.walk.circle.fill")
-                            .font(.largeTitle).foregroundStyle(.white, .blue)
-                            .background(.white, in: Circle())
+        BaduyMapView(model: model, onLandmark: select, onCharacter: interact)
+        .overlay(alignment: .top) {
+            VStack(spacing: 0) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Kanekes Village")
+                            .font(.system(size: 27, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color(red: 0.04, green: 0.16, blue: 0.36))
+                        Text("Leuwidamar, Lebak, Banten")
+                            .font(.system(size: 16, weight: .regular))
+                            .foregroundStyle(Color(red: 0.08, green: 0.25, blue: 0.50))
+                    }
+                    Spacer()
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.04, green: 0.18, blue: 0.38))
+                        .frame(width: 52, height: 52)
+                        .background(Color.white.opacity(0.92), in: Circle())
+                        .overlay(Circle().stroke(.gray.opacity(0.18), lineWidth: 1))
+                }
+                .padding(.horizontal, 26)
+                .padding(.vertical, 18)
+                .background(Color.white.opacity(0.96), in: UnevenRoundedRectangle(bottomLeadingRadius: 30, bottomTrailingRadius: 30))
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        mapChip("♨  Pertanian", color: Color(red: 0.10, green: 0.40, blue: 0.25))
+                        mapChip("🧺  Perdagangan", color: .black)
+                        mapChip("▣  Tradisi", color: Color(red: 0.03, green: 0.16, blue: 0.38))
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .padding(.top, 12)
+
+                HStack {
+                    Spacer()
+                    Button { } label: {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 21, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 50, height: 50)
+                            .background(Color(red: 0.04, green: 0.20, blue: 0.45), in: Circle())
                     }
                 }
-            } else {
-                UserAnnotation()
-            }
-            ForEach(model.landmarks) { landmark in
-                Annotation(landmark.name, coordinate: landmark.coordinate) {
-                    Button { select(landmark) } label: {
-                        Image(systemName: "mappin.circle.fill")
-                            .font(.title)
-                            .foregroundStyle(.white, model.selectedLandmark?.id == landmark.id ? .blue : .orange)
-                            .padding(6).background(.regularMaterial, in: Circle())
-                    }
-                    .accessibilityLabel(landmark.name)
-                }
-            }
-            ForEach(BaduyCharacter.allCases) { character in
-                if let coordinate = model.coordinate(for: character) {
-                    Annotation(character.title, coordinate: coordinate) {
-                        Button { interact(with: character) } label: {
-                            CharacterMapIcon(character: character,
-                                unlocked: model.canInteract(with: character, at: interactionDate))
-                        }
-                        .disabled(!model.canInteract(with: character, at: interactionDate))
-                        .accessibilityLabel("\(character.title), \(interactionDescription(character))")
-                    }
-                }
-            }
-            ForEach(model.trails.indices, id: \.self) { index in
-                MapPolyline(coordinates: model.trails[index]).stroke(.orange, lineWidth: 4)
+                .padding(.top, 14)
+                .padding(.trailing, 16)
             }
         }
-        .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
-        .overlay(alignment: .topLeading) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Peta Baduy").font(.headline)
-                Text(model.isAtCiboleger == true ? "Jelajahi Baduy" : "Temui dua karakter di sekitar Anda").font(.subheadline)
-                Text(model.status).font(.caption).foregroundStyle(.secondary)
+        .safeAreaInset(edge: .bottom) {
+            if model.isDebugMode {
+            VStack(alignment: .leading, spacing: 12) {
                 #if DEBUG
                 Toggle("Debug analog", isOn: Binding(get: { model.isDebugMode }, set: { enabled in
                     joystick = .zero
@@ -76,12 +82,6 @@ struct HomeView: View {
                     if let location = model.location { focus(on: location.coordinate, metres: 220) }
                 }))
                 #endif
-            }
-            .padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-            .padding()
-        }
-        .safeAreaInset(edge: .bottom) {
-            VStack(alignment: .leading, spacing: 12) {
                 if model.isDebugMode {
                     HStack {
                         DebugJoystick(direction: $joystick)
@@ -150,8 +150,24 @@ struct HomeView: View {
                     }
                 }
             }
-            .padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
-            .padding()
+            .padding(16).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28)).padding(.horizontal, 20)
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            VStack(spacing: 12) {
+                Button { focus(on: MapLandmark.baduyPoints[0].coordinate, metres: 2_500) } label: {
+                    Text("S").font(.title3.weight(.bold)).foregroundStyle(.black)
+                        .frame(width: 48, height: 48).background(.white.opacity(0.82), in: Circle())
+                }
+                Button {
+                    guard let location = model.location else { return }
+                    focus(on: location.coordinate, metres: 220)
+                } label: {
+                    Image(systemName: "location.fill").font(.title3).foregroundStyle(.black)
+                        .frame(width: 48, height: 48).background(.white.opacity(0.82), in: Circle())
+                }
+            }
+            .padding(.trailing, 20).padding(.bottom, 34)
         }
         .fullScreenCover(item: $arCharacter) { character in
             ARCharacterRoom(initialCharacter: character)
@@ -222,5 +238,11 @@ struct HomeView: View {
             position = .region(MKCoordinateRegion(center: coordinate,
                 latitudinalMeters: metres, longitudinalMeters: metres))
         }
+    }
+
+    private func mapChip(_ title: String, color: Color) -> some View {
+        Text(title).font(.caption.weight(.semibold)).foregroundStyle(.white)
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            .background(color, in: Capsule())
     }
 }

@@ -78,6 +78,7 @@ struct ARCharactersView: View {
         .ignoresSafeArea()
         .gesture(SpatialTapGesture().targetedToAnyEntity().onEnded { value in
             guard scene.placed, let character = scene.character(for: value.entity) else { return }
+            scene.bounce(character)
             select(character)
         })
         .safeAreaInset(edge: .bottom) {
@@ -209,5 +210,21 @@ private final class CharacterScene {
             current = candidate.parent
         }
         return nil
+    }
+
+    /// Gives the imported seahorse a small, readable tap response without
+    /// changing its placement on the detected plane.
+    func bounce(_ character: BaduyCharacter) {
+        guard let root = roots[character], root.isEnabled, root.isActive else { return }
+        let original = root.transform
+        var lifted = original
+        lifted.translation.y += 0.16
+        root.move(to: lifted, relativeTo: anchor, duration: 0.12, timingFunction: .easeInOut)
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(130))
+            guard !stopped, root.isActive else { return }
+            root.move(to: original, relativeTo: anchor, duration: 0.22, timingFunction: .easeInOut)
+        }
     }
 }

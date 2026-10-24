@@ -1,0 +1,75 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "tugu_ciboleger",
+        "title": "Tugu Patung Ciboleger",
+        "subtitle": "01 / Gerbang Wilayah Adat",
+        "category": "monument",
+        "story": "Monumen ikonik patung warga Baduy dengan pakaian khas hitam-putih dan tas koja. Titik selamat datang gerbang utama sebelum memasuki kawasan adat Kanekes."
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [106.22509, -6.59412]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "terminal_ciboleger",
+        "title": "Terminal Ciboleger",
+        "subtitle": "02 / Titik Akhir Kendaraan",
+        "category": "gateway",
+        "story": "Terminal transportasi dan pos registrasi pemandu lokal. Titik temu kendaraan bermotor terakhir sebelum pengunjung melanjutkan perjalanan dengan berjalan kaki."
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [106.22511, -6.59402]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "kaduketug_center",
+        "title": "Kampung Adat Kaduketuk",
+        "subtitle": "03 / Sentra Tenun Baduy Luar",
+        "category": "village",
+        "story": "Kampung pertama Baduy Luar di gerbang Kanekes. Dikenal dengan deretan rumah panggung kayu beratap ijuk, sentra kerajinan kain tenun motif aros, dan tas kulit kayu koja."
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [106.22603, -6.59717]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "jembatan_gajeboh",
+        "title": "Jembatan Bambu Ciujung",
+        "subtitle": "04 / Titian Penyeberangan Tradisional",
+        "category": "bridge",
+        "story": "Jembatan bambu gantung tradisional yang dirakit tanpa paku besi, melintasi aliran deras Sungai Ciujung dan menjadi batas filosofis pemisah dunia luar dan kawasan adat."
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [106.22290, -6.60792]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "gardu_pandang",
+        "title": "Spot Panorama Perbukitan",
+        "subtitle": "05 / Gardu Pandang Lembah Adat",
+        "category": "viewpoint",
+        "story": "Titik ketinggian bukit dengan pemandangan terbuka menghadap bentang alam lembah hijau Kanekes dan jalur menuju desa-desa Baduy Dalam (Cibeo, Cikertawana, Cikeusik)."
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [106.22135, -6.60950]
+      }
+    }
+  ]
+}
