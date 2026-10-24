@@ -94,59 +94,7 @@ enum TerrainTexture {
             eastRiver.lineWidth = 3.5
             eastRiver.stroke()
 
-            // 5. AUTHENTIC MAP STREETS (Woodcut styled dashed tracks with junction beads)
-            func drawWindingStreet(from: SIMD3<Float>, to: SIMD3<Float>, curveIntensity: Float = 0) {
-                let steps = 40
-                var pts: [CGPoint] = []
-                for s in 0...steps {
-                    let t = Float(s) / Float(steps)
-                    var p = from + (to - from) * t
-                    // Natural walking trail curvature following contours
-                    p.x += sin(t * .pi) * curveIntensity
-                    pts.append(toPoint(p))
-                }
-
-                // 5a. Dark outer path outline
-                let borderPath = UIBezierPath()
-                borderPath.move(to: pts[0])
-                for pt in pts.dropFirst() { borderPath.addLine(to: pt) }
-                UIColor(red: 0.08, green: 0.12, blue: 0.16, alpha: 0.92).setStroke()
-                borderPath.lineWidth = 7.0
-                borderPath.stroke()
-
-                // 5b. Inner dashed cream street track matching the reference illustration
-                let dashPath = UIBezierPath()
-                dashPath.move(to: pts[0])
-                for pt in pts.dropFirst() { dashPath.addLine(to: pt) }
-                let dashes: [CGFloat] = [7.0, 4.0]
-                dashPath.setLineDash(dashes, count: dashes.count, phase: 0)
-                UIColor(red: 0.96, green: 0.92, blue: 0.78, alpha: 1.0).setStroke()
-                dashPath.lineWidth = 3.8
-                dashPath.stroke()
-            }
-
-            // Main Trail from Terminal -> Saung Info -> Jembatan Ciujung -> Kaduketug -> Kadujangkung
             let landmarks = BaduyLandmark.samples
-            if landmarks.count >= 2 {
-                for i in 0..<(landmarks.count - 1) {
-                    let p0 = landmarks[i].position
-                    let p1 = landmarks[i + 1].position
-                    let curve: Float = (i % 2 == 0) ? 14.0 : -14.0
-                    drawWindingStreet(from: p0, to: p1, curveIntensity: curve)
-                }
-            }
-
-            // Regional entrance road from Leuwidamar & forest paths
-            let sideAlleys: [(SIMD3<Float>, SIMD3<Float>)] = [
-                (SIMD3<Float>(-500, 0, -580), SIMD3<Float>(40, 0, -180)),  // Northern main road
-                (SIMD3<Float>(42, 0, -170), SIMD3<Float>(380, 0, -220)),   // Eastern hillside road
-                (SIMD3<Float>(85, 0, -80), SIMD3<Float>(420, 0, 120)),     // Kaduketuk to eastern leuit
-                (SIMD3<Float>(-50, 0, 140), SIMD3<Float>(-320, 0, 380))    // Southern deep trail
-            ]
-            for alley in sideAlleys {
-                drawWindingStreet(from: alley.0, to: alley.1, curveIntensity: 20.0)
-            }
-
             // Illustrated Waypoint Nodes / Rings on Landmark Centers (as drawn on the map)
             for lm in landmarks {
                 let centerPt = toPoint(lm.position)
@@ -179,7 +127,7 @@ enum TerrainTexture {
                 cg.restoreGState()
             }
 
-            for building in SettlementData.surroundingBuildings {
+            for building in SettlementData.displayedBuildings {
                 drawBuildingFootprint(
                     at: building.position,
                     width: CGFloat(building.size.x * 2.2),
