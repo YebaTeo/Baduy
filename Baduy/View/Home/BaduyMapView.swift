@@ -2,12 +2,19 @@ import SwiftUI
 import RealityKit
 import UIKit
 
+enum BaduyCameraMode: String, CaseIterable, Identifiable {
+    case topDown
+    case thirdPerson
+    var id: Self { self }
+}
+
 /// PoC-C67 map renderer: procedural BaduyWorld grid, PoC texture and orbit camera.
 struct BaduyMapView: UIViewRepresentable {
     let model: HomeViewModel
+    let cameraMode: BaduyCameraMode
     let onLandmark: (MapLandmark) -> Void
     let onCharacter: (BaduyCharacter) -> Void
-    func makeCoordinator() -> Coordinator { Coordinator(model: model, onLandmark: onLandmark, onCharacter: onCharacter) }
+    func makeCoordinator() -> Coordinator { Coordinator(model: model, cameraMode: cameraMode, onLandmark: onLandmark, onCharacter: onCharacter) }
     func makeUIView(context: Context) -> ARView {
         let view = ARView(frame: .zero, cameraMode: .nonAR, automaticallyConfigureSession: false)
         #if targetEnvironment(simulator)
@@ -22,17 +29,23 @@ struct BaduyMapView: UIViewRepresentable {
         view.addGestureRecognizer(UITapGestureRecognizer(target: c, action: #selector(Coordinator.tap(_:))))
         return view
     }
-    func updateUIView(_ view: ARView, context: Context) { context.coordinator.model = model }
+    func updateUIView(_ view: ARView, context: Context) {
+        context.coordinator.model = model
+        context.coordinator.setCameraMode(cameraMode)
+    }
 
     @MainActor final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         weak var view: ARView?; let camera = PerspectiveCamera(); var anchor = AnchorEntity(world: .zero)
         var model: HomeViewModel; let onLandmark: (MapLandmark)->Void; let onCharacter: (BaduyCharacter)->Void
-        var angle: Float = 0.35, elevation: Float = 0.82, distance: Float = 1350, lookAt: SIMD3<Float> = [0,0,0]
+        var angle: Float = 0.35, elevation: Float = 0.82, distance: Float = 820, lookAt: SIMD3<Float> = [0,0,0]
         private var pinchWorldAnchor: SIMD3<Float>?
+        private var activeCameraMode: BaduyCameraMode
+        private var cameraIsConfigured = false
+        private var playerMarker: ModelEntity?
         var selectable: [String: MapLandmark] = [:]
         private var locationLabels: [Entity] = []
         let awsTerrain = CibolegerTerrain()
-        init(model: HomeViewModel,onLandmark:@escaping(MapLandmark)->Void,onCharacter:@escaping(BaduyCharacter)->Void){self.model=model;self.onLandmark=onLandmark;self.onCharacter=onCharacter}
+        init(model: HomeViewModel,cameraMode:BaduyCameraMode,onLandmark:@escaping(MapLandmark)->Void,onCharacter:@escaping(BaduyCharacter)->Void){self.model=model;self.activeCameraMode=cameraMode;self.onLandmark=onLandmark;self.onCharacter=onCharacter}
         func build() {
             if let terrain = try? awsTerrain.entity() { anchor.addChild(terrain) }
             let featuredBuilding = SettlementData.displayedBuildings.min {
@@ -114,7 +127,56 @@ struct BaduyMapView: UIViewRepresentable {
             for poi in BaduyLandmark.samples where poi.category != "village" {
                 addLocationLabel(poi.title, subtitle: poi.subtitle, coordinate: poi.coordinate)
             }
-            for character in BaduyCharacter.allCases { if let c=model.coordinate(for:character){let p=awsTerrain.point(c);let m=ModelEntity(mesh:.generateSphere(radius:5),materials:[UnlitMaterial(color:character == .cowo ? .systemTeal : .systemYellow)]);m.name=character.rawValue;m.position=p+[0,7,0];m.generateCollisionShapes(recursive:true);m.components.set(InputTargetComponent());anchor.addChild(m)} }
+            for character in BaduyCharacter.allCases { if let c=model.coordinate(for:character){let p=awsTerrain.point(c);let m=ModelEntity(mesh:.generateSphere(radius:5),materials:[UnlitMaterial(color:character == .cowo ? .systemTeal : .systemYellow)]);m.name=character.rawValue;
+                m.position=p+[0,7,0];m.generateCollisionShapes(recursive:true);m.components.set(InputTargetComponent());anchor.addChild(m)} }
+            let player = ModelEntity(
+                mesh: .generateSphere(radius: 4),
+                materials: [UnlitMaterial(color: UIColor(red: 0.20, green: 0.72, blue: 0.76, alpha: 1))]
+            )
+            player.name = "user_position"
+            playerMarker = player
+            anchor.addChild(player)
+            updatePlayerPosition()
+            player.isEnabled = activeCameraMode == .thirdPerson
+            setCameraMode(activeCameraMode)
+        }
+
+        func setCameraMode(_ mode: BaduyCameraMode) {
+            let changed = mode != activeCameraMode || !cameraIsConfigured
+            activeCameraMode = mode
+            playerMarker?.isEnabled = mode == .thirdPerson
+            updatePlayerPosition()
+            guard changed else {
+                if mode == .thirdPerson { updateCamera() }
+                return
+            }
+            cameraIsConfigured = true
+            switch mode {
+            case .topDown:
+                angle = 0.35
+                elevation = 1.18
+                distance = 820
+                lookAt = [0, 0, 0]
+            case .thirdPerson:
+                angle = 0
+                elevation = 0.32
+                distance = 58
+                if let playerMarker {
+                    let player = playerMarker.position(relativeTo: nil)
+                    lookAt = player + [0, 5, -16]
+                }
+            }
+            updateCamera()
+        }
+
+        private func updatePlayerPosition() {
+            guard let playerMarker else { return }
+            let coordinate = model.location?.coordinate ?? MapLandmark.baduyPoints[0].coordinate
+            let ground = awsTerrain.point(coordinate)
+            playerMarker.position = ground + [0, 5, 0]
+            if activeCameraMode == .thirdPerson {
+                lookAt = ground + [0, 5, -16]
+            }
         }
 
         private func addLocationLabel(_ title: String, subtitle: String, coordinate: CLLocationCoordinate2D) {
@@ -188,12 +250,13 @@ struct BaduyMapView: UIViewRepresentable {
         #endif
         func updateCamera(){let eye=lookAt+SIMD3<Float>(sin(angle)*cos(elevation)*distance,sin(elevation)*distance,cos(angle)*cos(elevation)*distance);camera.look(at:lookAt,from:eye,relativeTo:nil);for label in locationLabels{label.look(at:eye,from:label.position(relativeTo:nil),relativeTo:nil);label.orientation *= simd_quatf(angle:.pi,axis:[0,1,0])}}
         func gestureRecognizer(_ a:UIGestureRecognizer,shouldRecognizeSimultaneouslyWith b:UIGestureRecognizer)->Bool{true}
-        @objc func pan(_ g: UIPanGestureRecognizer) { let d = g.translation(in: view); if g.numberOfTouches <= 1 { angle -= Float(d.x) * 0.006; elevation = min(1.4, max(0.25, elevation + Float(d.y) * 0.004)) } else { let s = distance * 0.0012; lookAt.x += cos(angle) * Float(d.x) * s + sin(angle) * Float(d.y) * s; lookAt.z += -sin(angle) * Float(d.x) * s + cos(angle) * Float(d.y) * s }; g.setTranslation(.zero, in: view); updateCamera() }
+        @objc func pan(_ g: UIPanGestureRecognizer) { let d = g.translation(in: view); if g.numberOfTouches <= 1 { angle -= Float(d.x) * 0.006; let upper:Float=activeCameraMode == .topDown ? 1.4 : 0.72;elevation=min(upper,max(0.16,elevation+Float(d.y)*0.004)) } else if activeCameraMode == .topDown { let s = distance * 0.0012; lookAt.x += cos(angle) * Float(d.x) * s + sin(angle) * Float(d.y) * s; lookAt.z += -sin(angle) * Float(d.x) * s + cos(angle) * Float(d.y) * s }; g.setTranslation(.zero, in: view); updateCamera() }
         @objc func pinch(_ g: UIPinchGestureRecognizer) {
             guard let view else { return }
             let center = g.location(in: view)
             if g.state == .began { pinchWorldAnchor = worldPoint(at: center) }
-            distance = min(3200, max(280, distance / Float(g.scale)))
+            let limits: ClosedRange<Float> = activeCameraMode == .topDown ? 280...3200 : 28...120
+            distance = min(limits.upperBound, max(limits.lowerBound, distance / Float(g.scale)))
             g.scale = 1
             updateCamera()
             if let anchor = pinchWorldAnchor, let after = worldPoint(at: center) {

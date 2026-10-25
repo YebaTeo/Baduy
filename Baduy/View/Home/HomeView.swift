@@ -11,6 +11,7 @@ struct HomeView: View {
     @State private var interactionDate = Date.now
     @State private var selectedCharacter: BaduyCharacter?
     @State private var arCharacter: BaduyCharacter?
+    @State private var cameraMode: BaduyCameraMode = .topDown
     @Environment(\.scenePhase) private var scenePhase
 
     init(model: HomeViewModel? = nil) {
@@ -22,7 +23,7 @@ struct HomeView: View {
     }
 
     var body: some View {
-        BaduyMapView(model: model, onLandmark: select, onCharacter: interact)
+        BaduyMapView(model: model, cameraMode: cameraMode, onLandmark: select, onCharacter: interact)
         .overlay(alignment: .top) {
             VStack(spacing: 0) {
                 HStack {
@@ -55,6 +56,15 @@ struct HomeView: View {
                     .padding(.horizontal, 16)
                 }
                 .padding(.top, 12)
+
+                HStack(spacing: 0) {
+                    cameraModeButton("Peta", icon: "map.fill", mode: .topDown)
+                    cameraModeButton("Jelajah 3D", icon: "figure.walk", mode: .thirdPerson)
+                }
+                .padding(4)
+                .background(Color(red: 0.98, green: 0.95, blue: 0.87).opacity(0.94), in: Capsule())
+                .overlay(Capsule().stroke(Color(red: 0.05, green: 0.22, blue: 0.32).opacity(0.14)))
+                .padding(.top, 10)
 
                 HStack {
                     Spacer()
@@ -161,5 +171,19 @@ struct HomeView: View {
         Text(title).font(.caption.weight(.semibold)).foregroundStyle(.white)
             .padding(.horizontal, 14).padding(.vertical, 8)
             .background(color, in: Capsule())
+    }
+
+    private func cameraModeButton(_ title: String, icon: String, mode: BaduyCameraMode) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.25)) { cameraMode = mode }
+        } label: {
+            Label(title, systemImage: icon)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(cameraMode == mode ? .white : Color(red: 0.05, green: 0.22, blue: 0.32))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 9)
+                .background(cameraMode == mode ? Color(red: 0.05, green: 0.25, blue: 0.31) : .clear, in: Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }
