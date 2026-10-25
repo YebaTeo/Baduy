@@ -66,6 +66,15 @@ final class CibolegerTerrain {
         let p = MKMapPoint(coordinate)
         return [Float((p.x-origin.x)*scale), height(p), Float((p.y-origin.y)*scale)]
     }
+    private func coordinate(_ localPoint: SIMD3<Float>) -> CLLocationCoordinate2D {
+        MKMapPoint(
+            x: origin.x + Double(localPoint.x) / scale,
+            y: origin.y + Double(localPoint.z) / scale
+        ).coordinate
+    }
+    private func isInsideRealityArea(_ a: SIMD3<Float>, _ b: SIMD3<Float>, _ c: SIMD3<Float>) -> Bool {
+        BaduyWorld.isInsideRealityArea(coordinate((a + b + c) / 3))
+    }
     func entity() throws -> Entity {
         var vertices: [SIMD3<Float>] = [], indices: [UInt32] = [], uv: [SIMD2<Float>] = []
         var contours: [SIMD3<Float>] = [], contourIndices: [UInt32] = []
@@ -80,10 +89,16 @@ final class CibolegerTerrain {
         }}
         for y in 0..<(samples - 1) { for x in 0..<(samples - 1) {
             let a = UInt32(y*samples+x), b = a+1, c = a+UInt32(samples), d = c+1
-            indices += [a,c,b,b,c,d]
+            if isInsideRealityArea(vertices[Int(a)], vertices[Int(c)], vertices[Int(b)]) {
+                indices += [a,c,b]
+            }
+            if isInsideRealityArea(vertices[Int(b)], vertices[Int(c)], vertices[Int(d)]) {
+                indices += [b,c,d]
+            }
             // Triangle intersections avoid ambiguous marching-squares saddle cases.
             for tri in [[a,c,b],[b,c,d]] {
                 let v = tri.map { vertices[Int($0)] }
+                guard isInsideRealityArea(v[0], v[1], v[2]) else { continue }
                 let low = v.map(\.y).min()!, high = v.map(\.y).max()!
                 var level = (floor(low/20)+1)*20
                 while level <= high {
@@ -124,9 +139,16 @@ final class CibolegerTerrain {
         let collection = try JSONDecoder().decode(Collection.self, from: Data(contentsOf: url))
         var vertices: [SIMD3<Float>] = [], indices: [UInt32] = []
         for feature in collection.features where feature.properties.kind == "highway" {
-            let points = feature.geometry.coordinates.map { point(CLLocationCoordinate2D(latitude: $0[1], longitude: $0[0])) }
+            let coordinates = feature.geometry.coordinates.map { CLLocationCoordinate2D(latitude: $0[1], longitude: $0[0]) }
+            let points = coordinates.map(point)
             let width: Float = ["path", "footway", "track", "bridleway", "steps"].contains(feature.properties.value) ? 2.2 : 4.5
-            for (a, b) in zip(points, points.dropFirst()) {
+            for index in 0..<max(0, points.count - 1) {
+                // Do not generate a ribbon when either endpoint falls outside
+                // the clipped terrain. This prevents roads floating in the
+                // ARView background along polygon boundaries.
+                guard BaduyWorld.isInsideRealityArea(coordinates[index], insetMeters: 70),
+                      BaduyWorld.isInsideRealityArea(coordinates[index + 1], insetMeters: 70) else { continue }
+                let a = points[index], b = points[index + 1]
                 var start = a, end = b
                 start.y += 1.1; end.y += 1.1
                 Self.ribbon(start, end, width: width, vertices: &vertices, indices: &indices)

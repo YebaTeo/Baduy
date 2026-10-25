@@ -6,7 +6,9 @@ import simd
 /// every village-sector/road group present in `ciboleger.geojson`.
 extension SettlementData {
     static let displayedBuildings: [SettlementBuilding] = {
-        RepresentativeSettlementLoader.load(maximumCount: 214) ?? surroundingBuildings
+        RepresentativeSettlementLoader.load(maximumCount: 320) ?? surroundingBuildings.filter {
+            BaduyWorld.isInsideRealityArea(BaduyWorld.coordinate($0.position), insetMeters: 85)
+        }
     }()
 }
 
@@ -68,13 +70,13 @@ private enum RepresentativeSettlementLoader {
         }
 
         // First retain one house from every village-sector/road group. Extra
-        // slots go to the most populated groups, up to three representatives.
+        // slots go to the most populated groups, up to ten representatives.
         var quota = Array(repeating: 1, count: orderedGroups.count)
         var remaining = max(0, maximumCount - orderedGroups.count)
         let priority = orderedGroups.indices.sorted {
             orderedGroups[$0].count > orderedGroups[$1].count
         }
-        for desiredQuota in 2...3 where remaining > 0 {
+        for desiredQuota in 2...10 where remaining > 0 {
             for index in priority where remaining > 0 && orderedGroups[index].count >= desiredQuota {
                 quota[index] = desiredQuota
                 remaining -= 1
@@ -101,6 +103,16 @@ private enum RepresentativeSettlementLoader {
         guard footprint.count >= 3 else { return nil }
         if footprint.first == footprint.last { footprint.removeLast() }
         guard !footprint.isEmpty else { return nil }
+
+        // A house is created only when its complete source footprint is on the
+        // rendered terrain. Checking only the centroid allowed large buildings
+        // to hang across the clipped edge.
+        guard footprint.allSatisfy({ point in
+            BaduyWorld.isInsideRealityArea(
+                BaduyWorld.coordinate([point.x, 0, point.y]),
+                insetMeters: 85
+            )
+        }) else { return nil }
 
         let center = footprint.reduce(.zero, +) / Float(footprint.count)
         let nearestRoad = roads.min {

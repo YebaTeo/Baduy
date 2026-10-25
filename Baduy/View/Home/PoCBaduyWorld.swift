@@ -9,6 +9,57 @@ enum BaduyWorld {
     static let origin = CLLocationCoordinate2D(latitude: -6.601760, longitude: 106.222022)
     static let metersPerDegree = 111_320.0
 
+    /// 3D exploration corridor from Terminal Ciboleger toward the Baduy villages.
+    static let realityArea: [CLLocationCoordinate2D] = [
+        // Northern buffer keeps the complete terminal area on the DEM even
+        // after the entity safety inset is applied.
+        .init(latitude: -6.59265, longitude: 106.22285),
+        .init(latitude: -6.59265, longitude: 106.22780),
+        .init(latitude: -6.60080, longitude: 106.22720),
+        // Continue beyond Spot 5 so it sits inside the map rather than on its edge.
+        .init(latitude: -6.61520, longitude: 106.22510),
+        .init(latitude: -6.61520, longitude: 106.21880),
+        .init(latitude: -6.60220, longitude: 106.22050)
+    ]
+
+    static func isInsideRealityArea(_ coordinate: CLLocationCoordinate2D, insetMeters: Double = 0) -> Bool {
+        var inside = false
+        var previous = realityArea.count - 1
+        for current in realityArea.indices {
+            let a = realityArea[current], b = realityArea[previous]
+            if (a.latitude > coordinate.latitude) != (b.latitude > coordinate.latitude) {
+                let longitude = (b.longitude - a.longitude) *
+                    (coordinate.latitude - a.latitude) / (b.latitude - a.latitude) + a.longitude
+                if coordinate.longitude < longitude { inside.toggle() }
+            }
+            previous = current
+        }
+        guard inside, insetMeters > 0 else { return inside }
+
+        // The DEM render grid is coarser than the source coordinates. Keep
+        // entities away from polygon edges so they cannot land on a triangle
+        // removed by terrain clipping.
+        let latitudeScale = metersPerDegree
+        let longitudeScale = metersPerDegree * cos(coordinate.latitude * .pi / 180)
+        func local(_ point: CLLocationCoordinate2D) -> SIMD2<Double> {
+            [(point.longitude - coordinate.longitude) * longitudeScale,
+             (point.latitude - coordinate.latitude) * latitudeScale]
+        }
+        let point = SIMD2<Double>.zero
+        var minimumDistance = Double.greatestFiniteMagnitude
+        previous = realityArea.count - 1
+        for current in realityArea.indices {
+            let a = local(realityArea[previous])
+            let b = local(realityArea[current])
+            let segment = b - a
+            let denominator = max(simd_length_squared(segment), 0.0001)
+            let t = min(1, max(0, simd_dot(point - a, segment) / denominator))
+            minimumDistance = min(minimumDistance, simd_length(point - (a + segment * t)))
+            previous = current
+        }
+        return minimumDistance >= insetMeters
+    }
+
     // Local map coordinates: x = east, z = south, y = up. One unit = one meter.
     static func position(_ coordinate: CLLocationCoordinate2D) -> SIMD3<Float> {
         SIMD3(Float((coordinate.longitude - origin.longitude) * metersPerDegree * cos(origin.latitude * .pi / 180)), 0,
