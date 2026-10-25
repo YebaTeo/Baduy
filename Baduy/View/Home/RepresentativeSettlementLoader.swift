@@ -6,7 +6,9 @@ import simd
 /// every village-sector/road group present in `ciboleger.geojson`.
 extension SettlementData {
     static let displayedBuildings: [SettlementBuilding] = {
-        RepresentativeSettlementLoader.load(maximumCount: 320) ?? surroundingBuildings.filter {
+        // Preserve a readable scene while retaining enough mapped homes for
+        // the full Ciboleger–Cibeo corridor.
+        RepresentativeSettlementLoader.load(maximumCount: 420) ?? surroundingBuildings.filter {
             BaduyWorld.isInsideRealityArea(BaduyWorld.coordinate($0.position), insetMeters: 85)
         }
     }()
@@ -69,12 +71,17 @@ private enum RepresentativeSettlementLoader {
             return a.roadID < b.roadID
         }
 
-        // First retain one house from every village-sector/road group. Extra
-        // slots go to the most populated groups, up to ten representatives.
+        // First retain one house from every village-sector/road group. Give
+        // the southbound groups (after Spot 5) priority for extra slots so
+        // the extended corridor is represented instead of being dominated by
+        // the denser Ciboleger settlement.
         var quota = Array(repeating: 1, count: orderedGroups.count)
         var remaining = max(0, maximumCount - orderedGroups.count)
         let priority = orderedGroups.indices.sorted {
-            orderedGroups[$0].count > orderedGroups[$1].count
+            let left = orderedGroups[$0].first!
+            let right = orderedGroups[$1].first!
+            if left.sectorZ != right.sectorZ { return left.sectorZ > right.sectorZ }
+            return orderedGroups[$0].count > orderedGroups[$1].count
         }
         for desiredQuota in 2...10 where remaining > 0 {
             for index in priority where remaining > 0 && orderedGroups[index].count >= desiredQuota {

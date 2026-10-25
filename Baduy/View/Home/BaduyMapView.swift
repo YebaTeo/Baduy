@@ -155,8 +155,11 @@ struct BaduyMapView: UIViewRepresentable {
             case .topDown:
                 angle = 0
                 elevation = 1.18
-                distance = 720
-                let corridorCenter = CLLocationCoordinate2D(latitude: -6.59920, longitude: 106.22460)
+                // Frame Spot 5 and the first southbound settlements on entry.
+                // Previously this centered on Ciboleger, leaving the newly
+                // bundled corridor just beyond the lower edge of the view.
+                distance = 1_150
+                let corridorCenter = CLLocationCoordinate2D(latitude: -6.61050, longitude: 106.22350)
                 lookAt = awsTerrain.point(corridorCenter)
             case .thirdPerson:
                 angle = 0
@@ -256,7 +259,7 @@ struct BaduyMapView: UIViewRepresentable {
         #endif
         func updateCamera(){let eye=lookAt+SIMD3<Float>(sin(angle)*cos(elevation)*distance,sin(elevation)*distance,cos(angle)*cos(elevation)*distance);camera.look(at:lookAt,from:eye,relativeTo:nil);for label in locationLabels{label.look(at:eye,from:label.position(relativeTo:nil),relativeTo:nil);label.orientation *= simd_quatf(angle:.pi,axis:[0,1,0])}}
         func gestureRecognizer(_ a:UIGestureRecognizer,shouldRecognizeSimultaneouslyWith b:UIGestureRecognizer)->Bool{true}
-        @objc func pan(_ g: UIPanGestureRecognizer) { let d = g.translation(in: view); if g.numberOfTouches <= 1 { angle -= Float(d.x) * 0.006; let upper:Float=activeCameraMode == .topDown ? 1.4 : 0.72;elevation=min(upper,max(0.16,elevation+Float(d.y)*0.004)) } else if activeCameraMode == .topDown { let s = distance * 0.0012; lookAt.x += cos(angle) * Float(d.x) * s + sin(angle) * Float(d.y) * s; lookAt.z += -sin(angle) * Float(d.x) * s + cos(angle) * Float(d.y) * s;lookAt.x=min(180,max(-620,lookAt.x));lookAt.z=min(2450,max(250,lookAt.z)) }; g.setTranslation(.zero, in: view); updateCamera() }
+        @objc func pan(_ g: UIPanGestureRecognizer) { let d = g.translation(in: view); if g.numberOfTouches <= 1 { angle -= Float(d.x) * 0.006; let upper:Float=activeCameraMode == .topDown ? 1.4 : 0.72;elevation=min(upper,max(0.16,elevation+Float(d.y)*0.004)) } else if activeCameraMode == .topDown { let s = distance * 0.0012; lookAt.x += cos(angle) * Float(d.x) * s + sin(angle) * Float(d.y) * s; lookAt.z += -sin(angle) * Float(d.x) * s + cos(angle) * Float(d.y) * s;lookAt.x=min(2200,max(-950,lookAt.x));lookAt.z=min(5400,max(-250,lookAt.z)) }; g.setTranslation(.zero, in: view); updateCamera() }
         @objc func pinch(_ g: UIPinchGestureRecognizer) {
             guard let view else { return }
             let center = g.location(in: view)

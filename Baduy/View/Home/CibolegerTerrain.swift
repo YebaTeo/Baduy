@@ -140,23 +140,52 @@ final class CibolegerTerrain {
         var vertices: [SIMD3<Float>] = [], indices: [UInt32] = []
         for feature in collection.features where feature.properties.kind == "highway" {
             let coordinates = feature.geometry.coordinates.map { CLLocationCoordinate2D(latitude: $0[1], longitude: $0[0]) }
-            let points = coordinates.map(point)
-            let width: Float = ["path", "footway", "track", "bridleway", "steps"].contains(feature.properties.value) ? 2.2 : 4.5
-            for index in 0..<max(0, points.count - 1) {
+            // Trails need to remain legible in the distant top-down view.
+            let width: Float = ["path", "footway", "track", "bridleway", "steps"].contains(feature.properties.value) ? 3.4 : 5.2
+            for index in 0..<max(0, coordinates.count - 1) {
                 // Do not generate a ribbon when either endpoint falls outside
                 // the clipped terrain. This prevents roads floating in the
                 // ARView background along polygon boundaries.
                 guard BaduyWorld.isInsideRealityArea(coordinates[index], insetMeters: 70),
                       BaduyWorld.isInsideRealityArea(coordinates[index + 1], insetMeters: 70) else { continue }
-                let a = points[index], b = points[index + 1]
-                var start = a, end = b
-                start.y += 1.1; end.y += 1.1
-                Self.ribbon(start, end, width: width, vertices: &vertices, indices: &indices)
+
+                // A straight ribbon between two distant OSM vertices cuts
+                // through hills even when both endpoints sit on the DEM.
+                // Resample every eight metres and query the same height map
+                // used by the terrain and house placement.
+                let a = point(coordinates[index])
+                let b = point(coordinates[index + 1])
+                let horizontalLength = simd_distance(
+                    SIMD2<Float>(a.x, a.z),
+                    SIMD2<Float>(b.x, b.z)
+                )
+                let steps = max(1, Int(ceil(horizontalLength / 8)))
+                for step in 0..<steps {
+                    let t0 = Double(step) / Double(steps)
+                    let t1 = Double(step + 1) / Double(steps)
+                    let startCoordinate = Self.interpolate(coordinates[index], coordinates[index + 1], t: t0)
+                    let endCoordinate = Self.interpolate(coordinates[index], coordinates[index + 1], t: t1)
+                    var start = point(startCoordinate)
+                    var end = point(endCoordinate)
+                    start.y += 1.65
+                    end.y += 1.65
+                    Self.ribbon(start, end, width: width, vertices: &vertices, indices: &indices)
+                }
             }
         }
         if !indices.isEmpty {
             parent.addChild(try Self.mesh(vertices, indices, color: UIColor(red: 0.91, green: 0.82, blue: 0.62, alpha: 1)))
         }
+    }
+    private static func interpolate(
+        _ a: CLLocationCoordinate2D,
+        _ b: CLLocationCoordinate2D,
+        t: Double
+    ) -> CLLocationCoordinate2D {
+        .init(
+            latitude: a.latitude + (b.latitude - a.latitude) * t,
+            longitude: a.longitude + (b.longitude - a.longitude) * t
+        )
     }
     private struct Collection: Decodable { let features: [Feature] }
     private struct Feature: Decodable {

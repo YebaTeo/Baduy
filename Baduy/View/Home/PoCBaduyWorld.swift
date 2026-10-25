@@ -17,8 +17,11 @@ enum BaduyWorld {
         .init(latitude: -6.59265, longitude: 106.22780),
         .init(latitude: -6.60080, longitude: 106.22720),
         // Continue beyond Spot 5 so it sits inside the map rather than on its edge.
-        .init(latitude: -6.61520, longitude: 106.22510),
-        .init(latitude: -6.61520, longitude: 106.21880),
+        .init(latitude: -6.63000, longitude: 106.24200),
+        .init(latitude: -6.64200, longitude: 106.24200),
+        .init(latitude: -6.64200, longitude: 106.23200),
+        .init(latitude: -6.63000, longitude: 106.21700),
+        .init(latitude: -6.61520, longitude: 106.21700),
         .init(latitude: -6.60220, longitude: 106.22050)
     ]
 
