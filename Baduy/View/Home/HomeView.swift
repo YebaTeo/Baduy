@@ -1,29 +1,206 @@
 import SwiftUI
-import MapKit
 import Combine
 
 private enum MapPalette {
-    static let ink = Color(red: 0.10, green: 0.22, blue: 0.31)
-    static let paper = LinearGradient(
-        colors: [Color(red: 1.0, green: 0.98, blue: 0.93), Color(red: 0.88, green: 0.93, blue: 0.87)],
-        startPoint: .topLeading, endPoint: .bottomTrailing)
+    static let ink = Color(red: 0.08, green: 0.19, blue: 0.27)
+    static let mist = Color(red: 0.91, green: 0.95, blue: 0.89)
+    static let cream = Color(red: 1.0, green: 0.97, blue: 0.88)
+    static let clay = Color(red: 0.64, green: 0.38, blue: 0.23)
+    static let teal = Color(red: 0.20, green: 0.58, blue: 0.57)
     static let indigo = LinearGradient(
         colors: [Color(red: 0.20, green: 0.36, blue: 0.49), Color(red: 0.10, green: 0.22, blue: 0.36)],
-        startPoint: .topLeading, endPoint: .bottomTrailing)
-    static let forest = LinearGradient(
-        colors: [Color(red: 0.27, green: 0.44, blue: 0.34), Color(red: 0.16, green: 0.32, blue: 0.26)],
-        startPoint: .topLeading, endPoint: .bottomTrailing)
-    static let clay = LinearGradient(
-        colors: [Color(red: 0.58, green: 0.37, blue: 0.25), Color(red: 0.43, green: 0.26, blue: 0.19)],
-        startPoint: .topLeading, endPoint: .bottomTrailing)
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+}
+
+private struct MapTopChrome: View {
+    let status: String
+    @Binding var cameraMode: BaduyCameraMode
+
+    var body: some View {
+        VStack(spacing: 10) {
+            MapHeader(status: status)
+            MapModePicker(cameraMode: $cameraMode)
+        }
+    }
+}
+
+private struct MapHeader: View {
+    let status: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "mountain.2.fill")
+                .font(.headline)
+                .foregroundStyle(MapPalette.cream)
+                .frame(width: 42, height: 42)
+                .background(MapPalette.indigo, in: Circle())
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Kanekes")
+                    .font(.title3.weight(.bold))
+                Text("Leuwidamar · Lebak · Banten")
+                    .font(.caption)
+                    .foregroundStyle(MapPalette.ink.opacity(0.68))
+            }
+            Spacer(minLength: 8)
+            MapStatusBadge(status: status)
+        }
+        .foregroundStyle(MapPalette.ink)
+        .padding(12)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(.white.opacity(0.55), lineWidth: 1)
+        }
+        .shadow(color: MapPalette.ink.opacity(0.14), radius: 18, y: 8)
+    }
+}
+
+private struct MapStatusBadge: View {
+    let status: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(MapPalette.teal)
+                .frame(width: 7, height: 7)
+            Text(status)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(MapPalette.mist.opacity(0.9), in: Capsule())
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct MapModePicker: View {
+    @Binding var cameraMode: BaduyCameraMode
+
+    var body: some View {
+        HStack(spacing: 4) {
+            MapModeButton(title: "Peta", icon: "map.fill", mode: .topDown, selection: $cameraMode)
+            MapModeButton(title: "Jelajah 3D", icon: "figure.walk", mode: .thirdPerson, selection: $cameraMode)
+        }
+        .padding(4)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay { Capsule().stroke(.white.opacity(0.55), lineWidth: 1) }
+        .shadow(color: MapPalette.ink.opacity(0.12), radius: 12, y: 5)
+        .frame(maxWidth: 290)
+    }
+}
+
+private struct MapModeButton: View {
+    let title: LocalizedStringKey
+    let icon: String
+    let mode: BaduyCameraMode
+    @Binding var selection: BaduyCameraMode
+
+    var body: some View {
+        let isSelected = selection == mode
+        Button {
+            withAnimation(.easeInOut(duration: 0.22)) {
+                selection = mode
+            }
+        } label: {
+            Label(title, systemImage: icon)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(isSelected ? .white : MapPalette.ink)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(MapPalette.indigo.opacity(isSelected ? 1 : 0), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+private struct MapBottomChrome: View {
+    let cameraMode: BaduyCameraMode
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .bottom, spacing: 12) {
+                MapLegend()
+                Spacer(minLength: 12)
+                MapGestureHint(cameraMode: cameraMode)
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                MapGestureHint(cameraMode: cameraMode)
+                MapLegend()
+            }
+        }
+    }
+}
+
+private struct MapLegend: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("LEGENDA")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(MapPalette.ink.opacity(0.58))
+            HStack(spacing: 12) {
+                LegendItem(title: "Kampung", color: MapPalette.clay)
+                LegendItem(title: "Tokoh", color: MapPalette.cream)
+                LegendItem(title: "Posisi", color: MapPalette.teal)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .mapChrome(shape: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+private struct LegendItem: View {
+    let title: LocalizedStringKey
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(color)
+                .frame(width: 8, height: 8)
+                .overlay { Circle().stroke(MapPalette.ink.opacity(0.2), lineWidth: 0.5) }
+            Text(title)
+                .font(.caption2.weight(.medium))
+        }
+        .foregroundStyle(MapPalette.ink)
+    }
+}
+
+private struct MapGestureHint: View {
+    let cameraMode: BaduyCameraMode
+
+    var body: some View {
+        Label(
+            cameraMode == .topDown ? "Geser dan cubit peta" : "Geser untuk melihat sekitar",
+            systemImage: cameraMode == .topDown ? "hand.draw.fill" : "rotate.3d.fill"
+        )
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(MapPalette.ink)
+        .padding(.horizontal, 13)
+        .padding(.vertical, 10)
+        .mapChrome(shape: Capsule())
+    }
+}
+
+private extension View {
+    func mapChrome<S: InsettableShape>(shape: S) -> some View {
+        background(.ultraThinMaterial, in: shape)
+            .overlay { shape.stroke(.white.opacity(0.5), lineWidth: 1) }
+            .shadow(color: MapPalette.ink.opacity(0.12), radius: 12, y: 5)
+    }
 }
 
 struct HomeView: View {
     @State private var model: HomeViewModel
-    @State private var position: MapCameraPosition
     @State private var joystick = CGSize.zero
     @State private var lastMovementTick = Date.now
-    @State private var didFocusUser = false
     @State private var interactionDate = Date.now
     @State private var selectedCharacter: BaduyCharacter?
     @State private var arCharacter: BaduyCharacter?
@@ -31,95 +208,45 @@ struct HomeView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     init(model: HomeViewModel? = nil) {
-        let model = model ?? HomeViewModel(landmarks: MapLandmark.baduyPoints)
-        _model = State(initialValue: model)
-        _position = State(initialValue: .region(MKCoordinateRegion(
-            center: model.landmarks.first?.coordinate ?? MapLandmark.baduyPoints[0].coordinate,
-            latitudinalMeters: 2_500, longitudinalMeters: 2_500)))
+        _model = State(initialValue: model ?? HomeViewModel(landmarks: MapLandmark.baduyPoints))
     }
 
     var body: some View {
-        BaduyMapView(model: model, cameraMode: cameraMode, onLandmark: select, onCharacter: interact)
+        BaduyMapView(
+            model: model,
+            cameraMode: cameraMode,
+            onLandmark: select,
+            onCharacter: interact
+        )
+        .ignoresSafeArea()
         .overlay(alignment: .top) {
-            VStack(spacing: 0) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Kanekes Village")
-                            .font(.system(size: 27, weight: .bold, design: .rounded))
-                            .foregroundStyle(Color(red: 0.05, green: 0.22, blue: 0.32))
-                        Text("Leuwidamar, Lebak, Banten")
-                            .font(.system(size: 16, weight: .regular))
-                            .foregroundStyle(Color(red: 0.22, green: 0.40, blue: 0.39))
-                    }
-                    Spacer()
-                    Image(systemName: "person.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.04, green: 0.18, blue: 0.38))
-                        .frame(width: 52, height: 52)
-                        .background(MapPalette.paper, in: Circle())
-                        .overlay(Circle().stroke(.white.opacity(0.7), lineWidth: 1))
-                }
-                .padding(.horizontal, 26)
-                .padding(.vertical, 18)
-                .background(MapPalette.paper, in: UnevenRoundedRectangle(bottomLeadingRadius: 30, bottomTrailingRadius: 30))
-                .shadow(color: MapPalette.ink.opacity(0.08), radius: 12, y: 5)
-
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        mapChip("Pertanian", icon: "leaf", gradient: MapPalette.forest)
-                        mapChip("Perdagangan", icon: "basket", gradient: MapPalette.clay)
-                        mapChip("Tradisi", icon: "square.grid.2x2", gradient: MapPalette.indigo)
-                    }
-                    .padding(.horizontal, 16)
-                }
-                .padding(.top, 12)
-
-                HStack(spacing: 0) {
-                    cameraModeButton("Peta", icon: "map.fill", mode: .topDown)
-                    cameraModeButton("Jelajah 3D", icon: "figure.walk", mode: .thirdPerson)
-                }
-                .padding(4)
-                .background(MapPalette.paper, in: Capsule())
-                .overlay(Capsule().stroke(Color(red: 0.05, green: 0.22, blue: 0.32).opacity(0.14)))
-                .padding(.top, 10)
-
-                HStack {
-                    Spacer()
-                    Button { } label: {
-                        Image(systemName: "camera.fill")
-                            .font(.system(size: 21, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 50, height: 50)
-                            .background(MapPalette.indigo, in: Circle())
-                            .overlay(Circle().stroke(.white.opacity(0.25), lineWidth: 1))
-                            .shadow(color: MapPalette.ink.opacity(0.18), radius: 6, y: 3)
-                    }
-                }
-                .padding(.top, 14)
-                .padding(.trailing, 16)
-            }
+            MapTopChrome(status: model.status, cameraMode: $cameraMode)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
         }
-        .overlay(alignment: .bottomTrailing) {
-            VStack(spacing: 12) {
-                Button { focus(on: MapLandmark.baduyPoints[0].coordinate, metres: 2_500) } label: {
-                    Text("S").font(.title3.weight(.bold)).foregroundStyle(MapPalette.ink)
-                        .frame(width: 48, height: 48).background(MapPalette.paper, in: Circle())
-                }
-                Button {
-                    guard let location = model.location else { return }
-                    focus(on: location.coordinate, metres: 220)
-                } label: {
-                    Image(systemName: "location.fill").font(.title3).foregroundStyle(MapPalette.ink)
-                        .frame(width: 48, height: 48).background(MapPalette.paper, in: Circle())
-                }
-            }
-            .padding(.trailing, 20).padding(.bottom, 34)
+        .overlay(alignment: .bottomLeading) {
+            MapBottomChrome(cameraMode: cameraMode)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 18)
         }
         .fullScreenCover(item: $arCharacter) { character in
             ARCharacterRoom(initialCharacter: character)
         }
         .sheet(item: $selectedCharacter) { character in
             CharacterConversationView(character: character)
+        }
+        .sheet(item: $model.selectedLandmark) { landmark in
+            BaduyInfoSheet(
+                title: landmark.name,
+                paragraphs: [
+                    landmark.detail.isEmpty
+                        ? "Jelajahi lokasi ini di kawasan Kanekes."
+                        : landmark.detail
+                ],
+                style: .white,
+                closeAction: { model.selectedLandmark = nil }
+            )
+            .baduySheetPresentation(interactable: true)
         }
         .alert(item: $model.enteredLandmark) { landmark in
             Alert(title: Text(landmark.name), message: Text("Anda memasuki radius lokasi ini."),
@@ -138,12 +265,8 @@ struct HomeView: View {
                 self.selectedCharacter = nil
             }
         }
-        .onChange(of: model.location) { _, location in
+        .onChange(of: model.location) { _, _ in
             interactionDate = .now
-            if let location, !didFocusUser {
-                didFocusUser = true
-                focus(on: location.coordinate, metres: 220)
-            }
             if let selectedCharacter, !model.canInteract(with: selectedCharacter) {
                 self.selectedCharacter = nil
             }
@@ -167,47 +290,7 @@ struct HomeView: View {
         }
     }
 
-    private func interactionDescription(_ character: BaduyCharacter) -> String {
-        guard let distance = model.distance(to: character) else { return "Menunggu GPS akurat…" }
-        if model.canInteract(with: character, at: interactionDate) { return model.isAtCiboleger == false ? "Masuk ruang AR" : "Ayo berbincang" }
-        if distance <= model.interactionRadius { return "Menunggu GPS akurat…" }
-        return "\(Int(distance)) m · terkunci"
-    }
-
     private func select(_ landmark: MapLandmark) {
         model.selectedLandmark = landmark
-        focus(on: landmark.coordinate, metres: 600)
-    }
-
-    private func focus(on coordinate: CLLocationCoordinate2D, metres: CLLocationDistance) {
-        withAnimation {
-            position = .region(MKCoordinateRegion(center: coordinate,
-                latitudinalMeters: metres, longitudinalMeters: metres))
-        }
-    }
-
-    private func mapChip(_ title: String, icon: String, gradient: LinearGradient) -> some View {
-        Label(title, systemImage: icon).font(.caption.weight(.semibold)).foregroundStyle(.white)
-            .padding(.horizontal, 14).padding(.vertical, 8)
-            .background(gradient, in: Capsule())
-            .overlay(Capsule().stroke(.white.opacity(0.2), lineWidth: 1))
-    }
-
-    private func cameraModeButton(_ title: String, icon: String, mode: BaduyCameraMode) -> some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.25)) { cameraMode = mode }
-        } label: {
-            Label(title, systemImage: icon)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(cameraMode == mode ? .white : Color(red: 0.05, green: 0.22, blue: 0.32))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 9)
-                .background {
-                    if cameraMode == mode {
-                        Capsule().fill(MapPalette.indigo)
-                    }
-                }
-        }
-        .buttonStyle(.plain)
     }
 }
