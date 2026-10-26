@@ -13,7 +13,7 @@ enum TerrainTexture {
         let task = Task { @MainActor in
             let image = try await Task.detached(priority: .userInitiated) {
                 let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-                let url = directory.appendingPathComponent("baduy-terrain-elevation-2k-v2.png")
+                let url = directory.appendingPathComponent("baduy-terrain-sage-2k-v3.png")
                 if let image = UIImage(contentsOfFile: url.path)?.cgImage { return image }
                 let image = renderImage()
                 if let data = image.pngData() { try? data.write(to: url, options: .atomic) }
@@ -57,12 +57,15 @@ enum TerrainTexture {
 
             // Elevation colors, relief, and grain cover the entire terrain footprint.
             var pixels = [UInt8](repeating: 255, count: size * size * 4)
+            let stops: [SIMD3<Double>] = [
+                [0.24, 0.40, 0.33], [0.46, 0.60, 0.43], [0.69, 0.74, 0.53]
+            ]
             for y in 0..<size {
                 for x in 0..<size {
                     let px = Float(x) / Float(size) * (halfSpan * 2.0) - halfSpan
                     let pz = Float(y) / Float(size) * (halfSpan * 2.0) - halfSpan
                     do {
-                        // Use the same height function as the terrain mesh.
+                        // Decorative relief for the illustrated color texture.
                         let terrainHeight = BaduyWorld.height(px, pz)
                         // Convert terrain elevation into a continuous low-to-high
                         // palette. The texture is regenerated with each cache
@@ -70,8 +73,7 @@ enum TerrainTexture {
                         let elevationRatio = max(0, min(1, (terrainHeight + 8) / 42))
                         let slopeX = (BaduyWorld.height(px + 1, pz) - BaduyWorld.height(px - 1, pz)) / 2
                         let slopeZ = (BaduyWorld.height(px, pz + 1) - BaduyWorld.height(px, pz - 1)) / 2
-                        let relief = Double(max(-0.10, min(0.10, (-slopeX - slopeZ) * 0.14)))
-                        let contour = abs(terrainHeight / 3 - (terrainHeight / 3).rounded()) < 0.025 ? -0.045 : 0.0
+                        let relief = Double(max(-0.035, min(0.035, (-slopeX - slopeZ) * 0.07)))
                         // Broad, continuous variation reads as land cover at
                         // map scale. Avoid high-frequency pixel noise, which
                         // looked blocky when the user zoomed into the map.
@@ -80,12 +82,17 @@ enum TerrainTexture {
                         let grain = (sin(smoothX * 19 + smoothY * 11) * 0.018)
                             + (cos(smoothX * 7 - smoothY * 15) * 0.012)
 
-                        // Lower ground is deep forest green; ridges become a
-                        // warm leaf green. This keeps relief readable while
-                        // matching natural Baduy materials.
-                        let r = max(0, min(1, 0.18 + Double(elevationRatio) * 0.27 + Double(grain) * 0.25 + relief + contour))
-                        let g = max(0, min(1, 0.32 + Double(elevationRatio) * 0.28 + Double(grain) * 0.30 + relief + contour))
-                        let b = max(0, min(1, 0.27 + Double(elevationRatio) * 0.12 + Double(grain) * 0.20 + relief + contour))
+                        // Forest -> sage -> warm bamboo green. Smoothstep keeps
+                        // the transition soft without visible color bands.
+                        let ratio = Double(elevationRatio) * 2
+                        let segment = min(Int(ratio), 1)
+                        let t = ratio - Double(segment)
+                        let blend = t * t * (3 - 2 * t)
+                        let color = stops[segment] * (1 - blend) + stops[segment + 1] * blend
+                        let shade = relief + Double(grain) * 0.18
+                        let r = max(0, min(1, color.x + shade))
+                        let g = max(0, min(1, color.y + shade))
+                        let b = max(0, min(1, color.z + shade))
 
                         let offset = (y * size + x) * 4
                         pixels[offset] = UInt8((r * 255).rounded())
@@ -112,7 +119,7 @@ enum TerrainTexture {
             // Low opacity prevents the motif from competing with roads, DEM
             // contours, houses, and location labels.
             cg.saveGState()
-            cg.setStrokeColor(UIColor(red: 0.035, green: 0.13, blue: 0.23, alpha: 0.10).cgColor)
+            cg.setStrokeColor(UIColor(red: 0.14, green: 0.27, blue: 0.29, alpha: 0.045).cgColor)
             cg.setLineWidth(2)
             let motifSpacing: CGFloat = 128
             let motifRadius: CGFloat = 13
@@ -145,7 +152,7 @@ enum TerrainTexture {
             cg.restoreGState()
 
             // 3. TREE CLUSTER TEXTURES (Stippled forest foliage matching the woodblock print)
-            cg.setFillColor(UIColor(red: 0.055, green: 0.22, blue: 0.16, alpha: 0.62).cgColor)
+            cg.setFillColor(UIColor(red: 0.20, green: 0.36, blue: 0.28, alpha: 0.20).cgColor)
             for i in 0..<260 {
                 let seed = Float(i) * 1.618
                 let fx = sin(seed * 7.1) * 115.0 + 30.0
@@ -156,7 +163,7 @@ enum TerrainTexture {
             }
 
             // 4. WATERWAYS & RIVERS (Sungai Ciujung flowing between Ciboleger & Kaduketug)
-            let riverColor = UIColor(red: 0.27, green: 0.53, blue: 0.64, alpha: 0.94)
+            let riverColor = UIColor(red: 0.39, green: 0.64, blue: 0.68, alpha: 0.94)
             cg.setLineCap(.round)
             cg.setLineJoin(.round)
 
