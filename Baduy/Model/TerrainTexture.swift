@@ -13,7 +13,7 @@ enum TerrainTexture {
         let task = Task { @MainActor in
             let image = try await Task.detached(priority: .userInitiated) {
                 let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-                let url = directory.appendingPathComponent("baduy-terrain-green-2k-v1.png")
+                let url = directory.appendingPathComponent("baduy-terrain-elevation-2k-v2.png")
                 if let image = UIImage(contentsOfFile: url.path)?.cgImage { return image }
                 let image = renderImage()
                 if let data = image.pngData() { try? data.write(to: url, options: .atomic) }
@@ -64,7 +64,10 @@ enum TerrainTexture {
                     do {
                         // Use the same height function as the terrain mesh.
                         let terrainHeight = BaduyWorld.height(px, pz)
-                        let depthRatio = max(0, min(1, (terrainHeight + 5) / 35))
+                        // Convert terrain elevation into a continuous low-to-high
+                        // palette. The texture is regenerated with each cache
+                        // version so changes to this scale are visible on device.
+                        let elevationRatio = max(0, min(1, (terrainHeight + 8) / 42))
                         let slopeX = (BaduyWorld.height(px + 1, pz) - BaduyWorld.height(px - 1, pz)) / 2
                         let slopeZ = (BaduyWorld.height(px, pz + 1) - BaduyWorld.height(px, pz - 1)) / 2
                         let relief = Double(max(-0.10, min(0.10, (-slopeX - slopeZ) * 0.14)))
@@ -80,9 +83,9 @@ enum TerrainTexture {
                         // Lower ground is deep forest green; ridges become a
                         // warm leaf green. This keeps relief readable while
                         // matching natural Baduy materials.
-                        let r = max(0, min(1, 0.18 + Double(depthRatio) * 0.27 + Double(grain) * 0.25 + relief + contour))
-                        let g = max(0, min(1, 0.32 + Double(depthRatio) * 0.28 + Double(grain) * 0.30 + relief + contour))
-                        let b = max(0, min(1, 0.27 + Double(depthRatio) * 0.12 + Double(grain) * 0.20 + relief + contour))
+                        let r = max(0, min(1, 0.18 + Double(elevationRatio) * 0.27 + Double(grain) * 0.25 + relief + contour))
+                        let g = max(0, min(1, 0.32 + Double(elevationRatio) * 0.28 + Double(grain) * 0.30 + relief + contour))
+                        let b = max(0, min(1, 0.27 + Double(elevationRatio) * 0.12 + Double(grain) * 0.20 + relief + contour))
 
                         let offset = (y * size + x) * 4
                         pixels[offset] = UInt8((r * 255).rounded())

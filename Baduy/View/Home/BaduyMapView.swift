@@ -25,7 +25,9 @@ struct BaduyMapView: UIViewRepresentable {
         let anchor = AnchorEntity(world: .zero); c.anchor = anchor; view.scene.addAnchor(anchor)
         Task { @MainActor [weak c] in
             let texture = try? await TerrainTexture.make()
-            guard let c, c.view != nil else { return }
+            guard let c else { return }
+            await c.awsTerrain.loadRemoteElevation()
+            guard c.view != nil else { return }
             c.build(texture: texture)
         }
         anchor.addChild(c.camera); c.updateCamera()
@@ -82,8 +84,8 @@ struct BaduyMapView: UIViewRepresentable {
                     let ground = awsTerrain.point(coordinate)
                     let placement = awsTerrain.buildingPlacement(
                         coordinate,
-                        halfWidth: 3.8,
-                        halfDepth: 3.0,
+                        halfWidth: 3.7 * template.scale.x,
+                        halfDepth: 2.8 * template.scale.z,
                         rotation: b.rotationY
                     )
                     let lumbung = template.clone(recursive: true)
@@ -91,8 +93,31 @@ struct BaduyMapView: UIViewRepresentable {
                     // The template's posts start at local y = 0. Fit the
                     // whole house to the local terrain plane so it does not
                     // float above a slope or remain unnaturally vertical.
-                    lumbung.position = [ground.x, placement.surface + 0.15, ground.z]
+                    lumbung.position = [ground.x, placement.surface, ground.z]
                     lumbung.orientation = placement.orientation
+
+                    // Ground each foot against the actual DEM. A center-point
+                    // placement can still leave a foot floating when the terrain
+                    // changes faster than the fitted plane.
+                    let footPositions: [SIMD3<Float>] = [
+                        [-3.7, 0, -2.8], [3.7, 0, -2.8],
+                        [-3.7, 0, 2.8], [3.7, 0, 2.8]
+                    ]
+                    let footCorrections = footPositions.map { foot in
+                        let scaledFoot = SIMD3<Float>(
+                            foot.x * lumbung.scale.x,
+                            foot.y * lumbung.scale.y,
+                            foot.z * lumbung.scale.z
+                        )
+                        let worldOffset = Self.rotated(scaledFoot, by: lumbung.orientation)
+                        let worldFoot = lumbung.position + worldOffset
+                        let terrainY = awsTerrain.terrainHeight(at: [worldFoot.x, 0, worldFoot.z])
+                        return terrainY - worldFoot.y
+                    }
+                    // Seat the lowest-ground foot too; a small intersection on
+                    // uneven ground is preferable to a visible gap below a post.
+                    lumbung.position.y += footCorrections.min() ?? 0
+
                     if b.id == featuredBuilding?.id, let featuredLumbung {
                         lumbung.name = featuredLumbung.id
                         lumbung.generateCollisionShapes(recursive: true)
@@ -237,7 +262,7 @@ struct BaduyMapView: UIViewRepresentable {
 
             let root = ModelEntity()
             // Keep the illustrative house smaller than the mapped terrain cells.
-            root.scale = [0.7, 0.7, 0.7]
+            root.scale = [0.45, 0.45, 0.45]
             let bodyMesh = MeshResource.generateBox(size: [9.5, 4.6, 7.4], cornerRadius: 0.12)
             let postMesh = MeshResource.generateBox(size: [0.65, 3.8, 0.65], cornerRadius: 0.08)
             let floorMesh = MeshResource.generateBox(size: [10.4, 0.45, 8.2], cornerRadius: 0.08)
@@ -273,6 +298,17 @@ struct BaduyMapView: UIViewRepresentable {
 
             return root
         }
+
+        private static func rotated(_ vector: SIMD3<Float>, by rotation: simd_quatf) -> SIMD3<Float> {
+            let quaternionVector = SIMD3<Float>(
+                rotation.vector.x,
+                rotation.vector.y,
+                rotation.vector.z
+            )
+            let twiceCross = 2 * simd_cross(quaternionVector, vector)
+            return vector + rotation.vector.w * twiceCross + simd_cross(quaternionVector, twiceCross)
+        }
+
         func updateCamera(){let eye=lookAt+SIMD3<Float>(sin(angle)*cos(elevation)*distance,sin(elevation)*distance,cos(angle)*cos(elevation)*distance);camera.look(at:lookAt,from:eye,relativeTo:nil);for label in locationLabels{label.look(at:eye,from:label.position(relativeTo:nil),relativeTo:nil);label.orientation *= simd_quatf(angle:.pi,axis:[0,1,0])}}
         func gestureRecognizer(_ a:UIGestureRecognizer,shouldRecognizeSimultaneouslyWith b:UIGestureRecognizer)->Bool{true}
         @objc func pan(_ g: UIPanGestureRecognizer) { let d = g.translation(in: view); if g.numberOfTouches <= 1 { angle -= Float(d.x) * 0.006; let upper:Float=activeCameraMode == .topDown ? 1.4 : 0.72;elevation=min(upper,max(0.16,elevation+Float(d.y)*0.004)) } else if activeCameraMode == .topDown { let s = distance * 0.0012; lookAt.x += cos(angle) * Float(d.x) * s + sin(angle) * Float(d.y) * s; lookAt.z += -sin(angle) * Float(d.x) * s + cos(angle) * Float(d.y) * s;lookAt.x=min(2200,max(-950,lookAt.x));lookAt.z=min(5400,max(-250,lookAt.z)) }; g.setTranslation(.zero, in: view); updateCamera() }
