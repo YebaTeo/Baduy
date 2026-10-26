@@ -115,7 +115,8 @@ struct BaduyLandmark: Identifiable, Equatable {
         .init(id: "terminal_ciboleger", title: "Terminal Ciboleger", subtitle: "02 / Titik Akhir Kendaraan", position: [42, 0, -170], story: "Terminal transportasi dan titik temu kendaraan bermotor terakhir.", category: "gateway"),
         .init(id: "kaduketug_center", title: "Kampung Adat Kaduketuk", subtitle: "03 / Sentra Tenun Baduy Luar", position: [85, 0, -80], story: "Kampung pertama Baduy Luar. Sentra kerajinan kain tenun motif aros dan tas koja.", category: "village"),
         .init(id: "jembatan_gajeboh", title: "Jembatan Bambu Ciujung", subtitle: "04 / Titian Tradisional", position: [-15, 0, 75], story: "Jembatan bambu gantung tradisional yang melintasi aliran deras Sungai Ciujung.", category: "bridge"),
-        .init(id: "gardu_pandang", title: "Spot Panorama Perbukitan", subtitle: "05 / Gardu Pandang Lembah Adat", position: [-50, 0, 140], story: "Titik ketinggian bukit dengan pemandangan terbuka menghadap bentang alam lembah Kanekes.", category: "viewpoint")
+        .init(id: "gardu_pandang", title: "Spot Panorama Perbukitan", subtitle: "05 / Gardu Pandang Lembah Adat", position: [-50, 0, 140], story: "Titik ketinggian bukit dengan pemandangan terbuka menghadap bentang alam lembah Kanekes.", category: "viewpoint"),
+        .init(id: "baduy_dalam", title: "Baduy Dalam", subtitle: "06 / Koridor menuju Cibeo", position: BaduyWorld.position(.init(latitude: -6.63742, longitude: 106.23858)), story: "Penanda kawasan Baduy Dalam di koridor menuju Cibeo. Rumah dan jalan di sekitarnya ditampilkan hanya di dalam area RealityKit.", category: "village")
     ]
 }
 

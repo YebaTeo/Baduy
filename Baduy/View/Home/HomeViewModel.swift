@@ -29,6 +29,12 @@ struct MapLandmark: Identifiable {
             coordinate: .init(latitude: -6.6075, longitude: 106.2226), radius: 100,
             detail: "An Outer Baduy village south of Ciboleger.",
             sourceURL: "https://www.fallingrain.com/world/ID/33/Gajeboh.html"
+        ),
+        MapLandmark(
+            id: "baduy_dalam", name: "Baduy Dalam",
+            coordinate: .init(latitude: -6.63742, longitude: 106.23858), radius: 180,
+            detail: "Penanda koridor menuju kawasan Baduy Dalam di sekitar Cibeo.",
+            sourceURL: "https://www.openstreetmap.org/?mlat=-6.63742&mlon=106.23858#map=15/-6.63742/106.23858"
         )
     ]
 
