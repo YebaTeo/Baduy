@@ -1,6 +1,7 @@
 import CoreLocation
 import Observation
 
+<<<<<<< HEAD:Baduy/View/Home/HomeViewModel.swift
 struct MapLandmark: Identifiable {
     let id: String
     let name: String
@@ -93,6 +94,8 @@ struct MapLandmark: Identifiable {
     ]
 }
 
+=======
+>>>>>>> 70eb194ec1490ed627ed70fad952b465066e8abb:Baduy/Model/HomeViewModel.swift
 @MainActor
 @Observable
 final class HomeViewModel: NSObject, CLLocationManagerDelegate {
