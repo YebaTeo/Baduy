@@ -36,6 +36,7 @@ struct BaduyMapView: UIViewRepresentable {
     }
     func updateUIView(_ view: ARView, context: Context) {
         context.coordinator.model = model
+        context.coordinator.updatePlayerPosition()
         context.coordinator.setCameraMode(cameraMode)
     }
 
@@ -161,7 +162,7 @@ struct BaduyMapView: UIViewRepresentable {
             updateCamera()
         }
 
-        private func updatePlayerPosition() {
+        func updatePlayerPosition() {
             guard let playerMarker else { return }
             let requestedCoordinate = model.location?.coordinate ?? MapLandmark.baduyPoints[0].coordinate
             // Outside the mapped Baduy corridor, start the 3D experience at

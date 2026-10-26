@@ -1,4 +1,5 @@
 import CoreLocation
+import CoreMotion
 import Observation
 
 @MainActor
@@ -13,10 +14,13 @@ final class HomeViewModel: NSObject, CLLocationManagerDelegate {
     private(set) var isDebugMode = false
     #endif
     private var debugStart: CLLocationCoordinate2D?
+    private var debugHeading: CLLocationDirection = 0
+    private var debugStepCount = 0
 
     func setDebugMode(_ enabled: Bool) {
         guard enabled != isDebugMode else { return }
         locationManager.stopUpdatingLocation()
+        stopWalkingSimulation()
         isDebugMode = enabled
         encounterOrigin = nil
         insideLandmarks.removeAll()
@@ -43,11 +47,18 @@ final class HomeViewModel: NSObject, CLLocationManagerDelegate {
 
     /// North-up movement, metres per second; diagonals have the same maximum speed.
     func moveDebugPlayer(east: Double, north: Double, elapsed: TimeInterval) {
-        guard isDebugMode, isActive, let location else { return }
         let magnitude = max(1, hypot(east, north))
-        let step = 8.0 * min(max(elapsed, 0), 0.1)
-        let latitude = min(85, max(-85, location.coordinate.latitude + north / magnitude * step / 111_320))
-        let longitude = location.coordinate.longitude + east / magnitude * step
+        let distance = 8.0 * min(max(elapsed, 0), 0.1)
+        advanceDebugPlayer(
+            east: east / magnitude * distance,
+            north: north / magnitude * distance
+        )
+    }
+
+    private func advanceDebugPlayer(east: Double, north: Double) {
+        guard isDebugMode, isActive, let location else { return }
+        let latitude = min(85, max(-85, location.coordinate.latitude + north / 111_320))
+        let longitude = location.coordinate.longitude + east
             / (111_320 * cos(latitude * .pi / 180))
         updateLocation(CLLocation(coordinate: .init(latitude: latitude,
             longitude: (longitude + 540).truncatingRemainder(dividingBy: 360) - 180),
@@ -100,6 +111,8 @@ final class HomeViewModel: NSObject, CLLocationManagerDelegate {
     let trails: [[CLLocationCoordinate2D]]
 
     @ObservationIgnored private let locationManager = CLLocationManager()
+    @ObservationIgnored private let pedometer = CMPedometer()
+    @ObservationIgnored private var isWalkingSimulationActive = false
     @ObservationIgnored private var insideLandmarks: Set<String> = []
     @ObservationIgnored private var isActive = false
     /// Called once on entry; leaving the radius rearms the event.
@@ -124,7 +137,8 @@ final class HomeViewModel: NSObject, CLLocationManagerDelegate {
         isActive = true
         if isDebugMode {
             if location == nil { resetDebugPosition() }
-            status = "DEBUG · Gerakkan analog untuk berjalan"
+            startWalkingSimulation()
+            status = "DEBUG · Berjalan mengikuti arah perangkat"
             return
         }
         switch locationManager.authorizationStatus {
@@ -141,13 +155,60 @@ final class HomeViewModel: NSObject, CLLocationManagerDelegate {
         }
     }
 
+    private func startWalkingSimulation() {
+        guard !isWalkingSimulationActive else { return }
+        isWalkingSimulationActive = true
+        debugStepCount = 0
+        locationManager.headingFilter = 2
+        locationManager.headingOrientation = .portrait
+        if CLLocationManager.headingAvailable() {
+            locationManager.startUpdatingHeading()
+        }
+
+        guard CMPedometer.isStepCountingAvailable() else { return }
+        pedometer.startUpdates(from: .now) { [weak self] data, _ in
+            guard let data else { return }
+            let stepCount = data.numberOfSteps.intValue
+            Task { @MainActor [weak self] in
+                guard let self, self.isWalkingSimulationActive, self.isActive else { return }
+                let delta = stepCount - self.debugStepCount
+                self.debugStepCount = stepCount
+                guard delta > 0 else { return }
+
+                let bearing = self.debugHeading * .pi / 180
+                let distance = Double(delta) * 0.72
+                self.advanceDebugPlayer(
+                    east: sin(bearing) * distance,
+                    north: cos(bearing) * distance
+                )
+            }
+        }
+    }
+
+    private func stopWalkingSimulation() {
+        guard isWalkingSimulationActive else { return }
+        isWalkingSimulationActive = false
+        pedometer.stopUpdates()
+        locationManager.stopUpdatingHeading()
+    }
+
     func stop() {
         isActive = false
         locationManager.stopUpdatingLocation()
+        stopWalkingSimulation()
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         if isActive { start() }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+        let heading = newHeading.trueHeading >= 0
+            ? newHeading.trueHeading
+            : newHeading.magneticHeading
+        if heading >= 0 {
+            debugHeading = heading
+        }
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
