@@ -75,14 +75,14 @@
       "type": "Feature",
       "properties": {
         "id": "baduy_dalam",
-        "title": "Baduy Dalam",
-        "subtitle": "06 / Koridor menuju Cibeo",
+        "title": "Gerbang Baduy Dalam",
+        "subtitle": "06 / Sebelum Desa Cibeo",
         "category": "village",
-        "story": "Penanda kawasan Baduy Dalam pada koridor menuju Cibeo. Ini adalah label wilayah untuk membantu orientasi, bukan batas administratif resmi."
+        "story": "Penanda pendekatan sebelum memasuki kawasan Baduy Dalam menuju Cibeo. Ini adalah label orientasi, bukan batas administratif resmi."
       },
       "geometry": {
         "type": "Point",
-        "coordinates": [106.23858, -6.63742]
+        "coordinates": [106.23055, -6.63201]
       }
     }
   ]
