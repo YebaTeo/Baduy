@@ -1,8 +1,38 @@
 import UIKit
 import RealityKit
 
+@MainActor
 enum TerrainTexture {
-    static func make() throws -> TextureResource {
+    private static var cachedTexture: TextureResource?
+
+    private static var loadingTask: Task<TextureResource, Error>?
+
+    static func make() async throws -> TextureResource {
+        if let cachedTexture { return cachedTexture }
+        if let loadingTask { return try await loadingTask.value }
+        let task = Task { @MainActor in
+            let image = try await Task.detached(priority: .userInitiated) {
+                let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+                let url = directory.appendingPathComponent("baduy-terrain-green-2k-v1.png")
+                if let image = UIImage(contentsOfFile: url.path)?.cgImage { return image }
+                let image = renderImage()
+                if let data = image.pngData() { try? data.write(to: url, options: .atomic) }
+                guard let cgImage = image.cgImage else { throw CocoaError(.fileReadCorruptFile) }
+                return cgImage
+            }.value
+            return try TextureResource.generate(from: image, options: .init(semantic: .color))
+        }
+        loadingTask = task
+        defer { loadingTask = nil }
+        let texture = try await task.value
+        cachedTexture = texture
+        return texture
+    }
+
+    nonisolated private static func renderImage() -> UIImage {
+
+        // 2K keeps the map responsive while per-pixel rendering and smooth
+        // color variation avoid the blocky look of the old raster.
         let size = 2048
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
@@ -26,8 +56,9 @@ enum TerrainTexture {
             }
 
             // Elevation colors, relief, and grain cover the entire terrain footprint.
-            for y in stride(from: 0, to: size, by: 2) {
-                for x in stride(from: 0, to: size, by: 2) {
+            var pixels = [UInt8](repeating: 255, count: size * size * 4)
+            for y in 0..<size {
+                for x in 0..<size {
                     let px = Float(x) / Float(size) * (halfSpan * 2.0) - halfSpan
                     let pz = Float(y) / Float(size) * (halfSpan * 2.0) - halfSpan
                     do {
@@ -38,7 +69,13 @@ enum TerrainTexture {
                         let slopeZ = (BaduyWorld.height(px, pz + 1) - BaduyWorld.height(px, pz - 1)) / 2
                         let relief = Double(max(-0.10, min(0.10, (-slopeX - slopeZ) * 0.14)))
                         let contour = abs(terrainHeight / 3 - (terrainHeight / 3).rounded()) < 0.025 ? -0.045 : 0.0
-                        let grain = (sin(Float(x * 17 + y * 43)) * 0.04) + (cos(Float(x * 37 - y * 19)) * 0.03)
+                        // Broad, continuous variation reads as land cover at
+                        // map scale. Avoid high-frequency pixel noise, which
+                        // looked blocky when the user zoomed into the map.
+                        let smoothX = Float(x) / Float(size)
+                        let smoothY = Float(y) / Float(size)
+                        let grain = (sin(smoothX * 19 + smoothY * 11) * 0.018)
+                            + (cos(smoothX * 7 - smoothY * 15) * 0.012)
 
                         // Lower ground is deep forest green; ridges become a
                         // warm leaf green. This keeps relief readable while
@@ -47,10 +84,25 @@ enum TerrainTexture {
                         let g = max(0, min(1, 0.32 + Double(depthRatio) * 0.28 + Double(grain) * 0.30 + relief + contour))
                         let b = max(0, min(1, 0.27 + Double(depthRatio) * 0.12 + Double(grain) * 0.20 + relief + contour))
 
-                        UIColor(red: r, green: g, blue: b, alpha: 1).setFill()
-                        cg.fill(CGRect(x: x, y: y, width: 2, height: 2))
+                        let offset = (y * size + x) * 4
+                        pixels[offset] = UInt8((r * 255).rounded())
+                        pixels[offset + 1] = UInt8((g * 255).rounded())
+                        pixels[offset + 2] = UInt8((b * 255).rounded())
                     }
                 }
+            }
+
+            // One image draw replaces millions of Core Graphics fill calls.
+            let data = Data(pixels)
+            if let provider = CGDataProvider(data: data as CFData),
+               let raster = CGImage(width: size, height: size,
+                                    bitsPerComponent: 8, bitsPerPixel: 32,
+                                    bytesPerRow: size * 4,
+                                    space: CGColorSpaceCreateDeviceRGB(),
+                                    bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                                    provider: provider, decode: nil,
+                                    shouldInterpolate: true, intent: .defaultIntent) {
+                UIImage(cgImage: raster).draw(in: CGRect(x: 0, y: 0, width: size, height: size))
             }
 
             // Subtle woven-diamond texture inspired by Baduy textile motifs.
@@ -142,7 +194,7 @@ enum TerrainTexture {
                 cg.fillEllipse(in: CGRect(x: centerPt.x - 3.5, y: centerPt.y - 3.5, width: 7, height: 7))
             }
 
-            // Buildings are rendered only as RealityKit lumbung models.
+            // Buildings are rendered as lightweight procedural RealityKit lumbung models.
             // 6. VINTAGE BORDER
             let borderStroke = UIColor(red: 0.035, green: 0.13, blue: 0.23, alpha: 0.86)
             borderStroke.setStroke()
@@ -150,6 +202,6 @@ enum TerrainTexture {
             cg.stroke(CGRect(x: 14, y: 14, width: size - 28, height: size - 28))
             cg.stroke(CGRect(x: 22, y: 22, width: size - 44, height: size - 44))
         }
-        return try TextureResource.generate(from: image.cgImage!, options: .init(semantic: .color))
+        return image
     }
 }

@@ -9,8 +9,9 @@ enum BaduyWorld {
     static let origin = CLLocationCoordinate2D(latitude: -6.601760, longitude: 106.222022)
     static let metersPerDegree = 111_320.0
 
-    /// 3D exploration corridor from Terminal Ciboleger toward the Baduy villages.
-    static let realityArea: [CLLocationCoordinate2D] = [
+    /// Control outline for the 3D exploration corridor from Terminal
+    /// Ciboleger toward the Baduy villages.
+    private static let realityAreaControlPoints: [CLLocationCoordinate2D] = [
         // Northern buffer keeps the complete terminal area on the DEM even
         // after the entity safety inset is applied.
         .init(latitude: -6.59265, longitude: 106.22285),
@@ -24,6 +25,32 @@ enum BaduyWorld {
         .init(latitude: -6.61520, longitude: 106.21700),
         .init(latitude: -6.60220, longitude: 106.22050)
     ]
+
+    /// Rounded outline used by the terrain mesh and every object filter.
+    /// Two gentle corner-cutting passes remove pointed polygon corners while
+    /// keeping the rendered corridor close to its original geographic area.
+    static let realityArea: [CLLocationCoordinate2D] = {
+        var points = realityAreaControlPoints
+        let cornerCut = 0.12
+        for _ in 0..<2 {
+            var rounded: [CLLocationCoordinate2D] = []
+            rounded.reserveCapacity(points.count * 2)
+            for index in points.indices {
+                let current = points[index]
+                let next = points[(index + 1) % points.count]
+                rounded.append(.init(
+                    latitude: current.latitude + (next.latitude - current.latitude) * cornerCut,
+                    longitude: current.longitude + (next.longitude - current.longitude) * cornerCut
+                ))
+                rounded.append(.init(
+                    latitude: current.latitude + (next.latitude - current.latitude) * (1 - cornerCut),
+                    longitude: current.longitude + (next.longitude - current.longitude) * (1 - cornerCut)
+                ))
+            }
+            points = rounded
+        }
+        return points
+    }()
 
     static func isInsideRealityArea(_ coordinate: CLLocationCoordinate2D, insetMeters: Double = 0) -> Bool {
         var inside = false

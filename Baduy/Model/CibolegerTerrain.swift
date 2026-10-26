@@ -11,8 +11,11 @@ final class CibolegerTerrain {
     private var demValues = [Int](repeating: 0, count: 256 * 256)
     private var baseElevation: Float = 0
     private let verticalScale: Float = 0.03
-    // Keep placement samples aligned with the rendered DEM mesh.
-    private let gridSamples = (0..<128).map { Int((Double($0) / 127 * 255).rounded()) }
+    // Render a denser mesh from the same DEM samples. The extra vertices are
+    // interpolated from the source data, so no decorative edge geometry is
+    // needed to hide the boundary.
+    private let gridSamples = Array(0...255)
+    private let renderSamples = Array(0...384)
     private var heightMap: [Int: Float] = [:]
     private(set) var available = false
     init() {
@@ -34,8 +37,8 @@ final class CibolegerTerrain {
         let x = (p.x / tileSize - 3256) * 256 - 0.5
         let y = (p.y / tileSize - 2123) * 256 - 0.5
         guard available, x >= 0, y >= 0, x <= 255, y <= 255 else { return 0 }
-        let ix = min(gridSamples.lastIndex(where: { Double($0) <= x })!, gridSamples.count - 2)
-        let iy = min(gridSamples.lastIndex(where: { Double($0) <= y })!, gridSamples.count - 2)
+        let ix = min(Int(x), 254)
+        let iy = min(Int(y), 254)
         let x0 = gridSamples[ix], x1 = gridSamples[ix + 1]
         let y0 = gridSamples[iy], y1 = gridSamples[iy + 1]
         let dx = Float((x - Double(x0)) / Double(x1 - x0))
@@ -66,6 +69,40 @@ final class CibolegerTerrain {
         let p = MKMapPoint(coordinate)
         return [Float((p.x-origin.x)*scale), height(p), Float((p.y-origin.y)*scale)]
     }
+
+    /// Fits a building to the local terrain plane instead of placing it
+    /// vertically on the highest point below its footprint.
+    func buildingPlacement(
+        _ coordinate: CLLocationCoordinate2D,
+        halfWidth: Float,
+        halfDepth: Float,
+        rotation: Float
+    ) -> (surface: Float, orientation: simd_quatf) {
+        let center = MKMapPoint(coordinate)
+        let c = cos(rotation)
+        let s = sin(rotation)
+
+        func sample(_ localX: Float, _ localZ: Float) -> SIMD3<Float> {
+            let east = (Double(localX) * Double(c) - Double(localZ) * Double(s)) / scale
+            let north = (Double(localX) * Double(s) + Double(localZ) * Double(c)) / scale
+            let mapPoint = MKMapPoint(x: center.x + east, y: center.y - north)
+            return [
+                Float((mapPoint.x - origin.x) * scale),
+                height(mapPoint),
+                Float((mapPoint.y - origin.y) * scale)
+            ]
+        }
+
+        let centerPoint = sample(0, 0)
+        let localXAxis = sample(halfWidth, 0) - sample(-halfWidth, 0)
+        let localZAxis = sample(0, halfDepth) - sample(0, -halfDepth)
+        var normal = simd_normalize(simd_cross(localZAxis, localXAxis))
+        if normal.y < 0 { normal = -normal }
+
+        let yaw = simd_quatf(angle: rotation, axis: [0, 1, 0])
+        let terrainTilt = simd_quatf(from: [0, 1, 0], to: normal)
+        return (centerPoint.y, simd_mul(terrainTilt, yaw))
+    }
     private func coordinate(_ localPoint: SIMD3<Float>) -> CLLocationCoordinate2D {
         MKMapPoint(
             x: origin.x + Double(localPoint.x) / scale,
@@ -75,30 +112,32 @@ final class CibolegerTerrain {
     private func isInsideRealityArea(_ a: SIMD3<Float>, _ b: SIMD3<Float>, _ c: SIMD3<Float>) -> Bool {
         BaduyWorld.isInsideRealityArea(coordinate((a + b + c) / 3))
     }
-    func entity() throws -> Entity {
+    func entity(texture terrainTexture: TextureResource? = nil) throws -> Entity {
         var vertices: [SIMD3<Float>] = [], indices: [UInt32] = [], uv: [SIMD2<Float>] = []
         var contours: [SIMD3<Float>] = [], contourIndices: [UInt32] = []
-        let samples = gridSamples.count
+        let samples = renderSamples.count
         for y in 0..<samples { for x in 0..<samples {
-            let sourceX = gridSamples[x]
-            let sourceY = gridSamples[y]
-            let p = MKMapPoint(x: (3256 + (Double(sourceX)+0.5)/256)*tileSize,
-                               y: (2123 + (Double(sourceY)+0.5)/256)*tileSize)
-            vertices.append([Float((p.x-origin.x)*scale), elevation(sourceX,sourceY), Float((p.y-origin.y)*scale)])
+            let sourceX = Double(x) / Double(samples - 1) * 255
+            let sourceY = Double(y) / Double(samples - 1) * 255
+            let p = MKMapPoint(x: (3256 + (sourceX + 0.5)/256)*tileSize,
+                               y: (2123 + (sourceY + 0.5)/256)*tileSize)
+            vertices.append([Float((p.x-origin.x)*scale), height(p), Float((p.y-origin.y)*scale)])
             uv.append([Float(x) / Float(samples - 1), 1 - Float(y) / Float(samples - 1)])
         }}
         for y in 0..<(samples - 1) { for x in 0..<(samples - 1) {
             let a = UInt32(y*samples+x), b = a+1, c = a+UInt32(samples), d = c+1
-            if isInsideRealityArea(vertices[Int(a)], vertices[Int(c)], vertices[Int(b)]) {
-                indices += [a,c,b]
-            }
-            if isInsideRealityArea(vertices[Int(b)], vertices[Int(c)], vertices[Int(d)]) {
-                indices += [b,c,d]
-            }
+            // Keep both halves of each cell together. Selecting them
+            // independently creates long triangular teeth at the map edge.
+            let cellCenter = (vertices[Int(a)] + vertices[Int(b)] + vertices[Int(c)] + vertices[Int(d)]) / 4
+            // Keep the full DEM cell when its center is in the geographic
+            // area. The smooth boundary surface overlaps these outer cells;
+            // keeping them prevents gaps when the map is viewed obliquely.
+            let cellIsInside = BaduyWorld.isInsideRealityArea(coordinate(cellCenter))
+            if cellIsInside { indices += [a,c,b,b,c,d] }
             // Triangle intersections avoid ambiguous marching-squares saddle cases.
             for tri in [[a,c,b],[b,c,d]] {
                 let v = tri.map { vertices[Int($0)] }
-                guard isInsideRealityArea(v[0], v[1], v[2]) else { continue }
+                guard cellIsInside else { continue }
                 let low = v.map(\.y).min()!, high = v.map(\.y).max()!
                 var level = (floor(low/20)+1)*20
                 while level <= high {
@@ -120,13 +159,17 @@ final class CibolegerTerrain {
         descriptor.textureCoordinates = MeshBuffers.TextureCoordinates(uv)
         descriptor.primitives = .triangles(indices)
         let terrainMesh = try MeshResource.generate(from: [descriptor])
-        if let texture = try? TerrainTexture.make() {
+        if let texture = terrainTexture {
             var material = UnlitMaterial(color: .white)
             material.color = .init(tint: .white, texture: .init(texture))
             result.addChild(ModelEntity(mesh: terrainMesh, materials: [material]))
         } else {
             result.addChild(ModelEntity(mesh: terrainMesh, materials: [UnlitMaterial(color: UIColor(red:0.25,green:0.43,blue:0.33,alpha:1))]))
         }
+        // Replace the grid-shaped outer cells with a DEM-sampled boundary.
+        // Its top uses the same texture and its skirt follows the same smooth
+        // geographic line, eliminating the triangular teeth at the edge.
+        try addSmoothTerrainBoundary(to: result, texture: terrainTexture)
         // Keep the contour overlay lightweight for Metal Simulator.
         if !contourIndices.isEmpty && contourIndices.count <= 12_000 {
             result.addChild(try Self.mesh(contours, contourIndices, color: UIColor(red:0.055,green:0.18,blue:0.25,alpha:0.64)))
@@ -134,6 +177,109 @@ final class CibolegerTerrain {
         try addRoads(to: result)
         return result
     }
+    private func addSmoothTerrainBoundary(to parent: Entity, texture: TextureResource?) throws {
+        let outline = BaduyWorld.realityArea
+        guard outline.count >= 3 else { return }
+
+        // Sample the rounded geographic outline at a fixed distance. The
+        // resulting outer loop is independent from the square DEM grid.
+        var outerCoordinates: [CLLocationCoordinate2D] = []
+        for index in outline.indices {
+            let a = outline[index]
+            let b = outline[(index + 1) % outline.count]
+            let length = simd_distance(
+                SIMD2<Float>(point(a).x, point(a).z),
+                SIMD2<Float>(point(b).x, point(b).z)
+            )
+            let steps = max(1, Int(ceil(length / 10)))
+            for step in 0..<steps {
+                outerCoordinates.append(Self.interpolate(a, b, t: Double(step) / Double(steps)))
+            }
+        }
+        guard outerCoordinates.count >= 3 else { return }
+
+        let outerPoints = outerCoordinates.map(point)
+        let overlap: Float = 95
+        var surfaceVertices: [SIMD3<Float>] = []
+        var surfaceUVs: [SIMD2<Float>] = []
+        var surfaceIndices: [UInt32] = []
+        surfaceVertices.reserveCapacity(outerPoints.count * 2)
+        surfaceUVs.reserveCapacity(outerPoints.count * 2)
+        surfaceIndices.reserveCapacity(outerPoints.count * 12)
+
+        func uv(for coordinate: CLLocationCoordinate2D) -> SIMD2<Float> {
+            let mapPoint = MKMapPoint(coordinate)
+            let sourceX = (mapPoint.x / tileSize - 3256) * 256 - 0.5
+            let sourceY = (mapPoint.y / tileSize - 2123) * 256 - 0.5
+            return [Float(sourceX / 255), 1 - Float(sourceY / 255)]
+        }
+
+        for (index, outer) in outerPoints.enumerated() {
+            // Move perpendicular to the edge, not toward the map's center.
+            // In a long corridor the center direction runs almost parallel
+            // to the edge, leaving a very narrow strip and an open seam.
+            let previous = outerPoints[(index + outerPoints.count - 1) % outerPoints.count]
+            let next = outerPoints[(index + 1) % outerPoints.count]
+            let tangent = SIMD2<Float>(next.x - previous.x, next.z - previous.z)
+            var direction = SIMD2<Float>(-tangent.y, tangent.x) / max(simd_length(tangent), 0.001)
+            let probe = outer + SIMD3<Float>(direction.x * 2, 0, direction.y * 2)
+            if !BaduyWorld.isInsideRealityArea(coordinate(probe)) { direction = -direction }
+            let innerXZ = SIMD2<Float>(outer.x, outer.z) + direction * overlap
+            let innerCoordinate = coordinate([innerXZ.x, 0, innerXZ.y])
+            let inner = point(innerCoordinate) + [0, 0.08, 0]
+            surfaceVertices += [outer + [0, 0.08, 0], inner]
+            surfaceUVs += [uv(for: outerCoordinates[index]), uv(for: innerCoordinate)]
+        }
+
+        for index in outerPoints.indices {
+            let next = (index + 1) % outerPoints.count
+            let outerA = UInt32(index * 2)
+            let innerA = outerA + 1
+            let outerB = UInt32(next * 2)
+            let innerB = outerB + 1
+            surfaceIndices += [outerA, innerA, outerB, outerB, innerA, innerB]
+            surfaceIndices += [outerB, innerA, outerA, innerB, innerA, outerB]
+        }
+
+        var descriptor = MeshDescriptor()
+        descriptor.positions = MeshBuffers.Positions(surfaceVertices)
+        descriptor.textureCoordinates = MeshBuffers.TextureCoordinates(surfaceUVs)
+        descriptor.primitives = .triangles(surfaceIndices)
+        let mesh = try MeshResource.generate(from: [descriptor])
+        if let texture {
+            var material = UnlitMaterial(color: .white)
+            material.color = .init(tint: .white, texture: .init(texture))
+            parent.addChild(ModelEntity(mesh: mesh, materials: [material]))
+        } else {
+            parent.addChild(ModelEntity(mesh: mesh, materials: [
+                UnlitMaterial(color: UIColor(red: 0.25, green: 0.43, blue: 0.33, alpha: 1))
+            ]))
+        }
+
+        let floorY = (outerPoints.map(\.y).min() ?? 0) - 18
+        var skirtVertices: [SIMD3<Float>] = []
+        var skirtIndices: [UInt32] = []
+        skirtVertices.reserveCapacity(outerPoints.count * 2)
+        skirtIndices.reserveCapacity(outerPoints.count * 12)
+        for outer in outerPoints {
+            skirtVertices += [outer, [outer.x, floorY, outer.z]]
+        }
+        for index in outerPoints.indices {
+            let next = (index + 1) % outerPoints.count
+            let topA = UInt32(index * 2)
+            let bottomA = topA + 1
+            let topB = UInt32(next * 2)
+            let bottomB = topB + 1
+            skirtIndices += [topA, bottomA, topB, topB, bottomA, bottomB]
+            skirtIndices += [topB, bottomA, topA, bottomB, bottomA, topB]
+        }
+        parent.addChild(try Self.mesh(
+            skirtVertices,
+            skirtIndices,
+            color: UIColor(red: 0.31, green: 0.25, blue: 0.16, alpha: 1)
+        ))
+    }
+
     private func addRoads(to parent: Entity) throws {
         guard let url = Bundle.main.url(forResource: "ciboleger", withExtension: "geojson") else { return }
         let collection = try JSONDecoder().decode(Collection.self, from: Data(contentsOf: url))
@@ -143,16 +289,11 @@ final class CibolegerTerrain {
             // Trails need to remain legible in the distant top-down view.
             let width: Float = ["path", "footway", "track", "bridleway", "steps"].contains(feature.properties.value) ? 3.4 : 5.2
             for index in 0..<max(0, coordinates.count - 1) {
-                // Do not generate a ribbon when either endpoint falls outside
-                // the clipped terrain. This prevents roads floating in the
-                // ARView background along polygon boundaries.
-                guard BaduyWorld.isInsideRealityArea(coordinates[index], insetMeters: 70),
-                      BaduyWorld.isInsideRealityArea(coordinates[index + 1], insetMeters: 70) else { continue }
-
                 // A straight ribbon between two distant OSM vertices cuts
                 // through hills even when both endpoints sit on the DEM.
-                // Resample every eight metres and query the same height map
-                // used by the terrain and house placement.
+                // Resample every eight metres and clip each small piece
+                // independently. This preserves roads that cross the edge of
+                // the clipped terrain instead of dropping the whole OSM segment.
                 let a = point(coordinates[index])
                 let b = point(coordinates[index + 1])
                 let horizontalLength = simd_distance(
@@ -165,6 +306,8 @@ final class CibolegerTerrain {
                     let t1 = Double(step + 1) / Double(steps)
                     let startCoordinate = Self.interpolate(coordinates[index], coordinates[index + 1], t: t0)
                     let endCoordinate = Self.interpolate(coordinates[index], coordinates[index + 1], t: t1)
+                    guard BaduyWorld.isInsideRealityArea(startCoordinate, insetMeters: 8),
+                          BaduyWorld.isInsideRealityArea(endCoordinate, insetMeters: 8) else { continue }
                     var start = point(startCoordinate)
                     var end = point(endCoordinate)
                     start.y += 1.65

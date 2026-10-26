@@ -22,7 +22,12 @@ struct BaduyMapView: UIViewRepresentable {
         #endif
         view.environment.background = .color(UIColor(red: 0.94, green: 0.91, blue: 0.82, alpha: 1))
         let c = context.coordinator; c.view = view
-        let anchor = AnchorEntity(world: .zero); c.anchor = anchor; view.scene.addAnchor(anchor); c.build()
+        let anchor = AnchorEntity(world: .zero); c.anchor = anchor; view.scene.addAnchor(anchor)
+        Task { @MainActor [weak c] in
+            let texture = try? await TerrainTexture.make()
+            guard let c, c.view != nil else { return }
+            c.build(texture: texture)
+        }
         anchor.addChild(c.camera); c.updateCamera()
         let pan = UIPanGestureRecognizer(target: c, action: #selector(Coordinator.pan(_:))); pan.delegate = c; view.addGestureRecognizer(pan)
         let pinch = UIPinchGestureRecognizer(target: c, action: #selector(Coordinator.pinch(_:))); pinch.delegate = c; view.addGestureRecognizer(pinch)
@@ -46,8 +51,8 @@ struct BaduyMapView: UIViewRepresentable {
         private var locationLabels: [Entity] = []
         let awsTerrain = CibolegerTerrain()
         init(model: HomeViewModel,cameraMode:BaduyCameraMode,onLandmark:@escaping(MapLandmark)->Void,onCharacter:@escaping(BaduyCharacter)->Void){self.model=model;self.activeCameraMode=cameraMode;self.onLandmark=onLandmark;self.onCharacter=onCharacter}
-        func build() {
-            if let terrain = try? awsTerrain.entity() { anchor.addChild(terrain) }
+        func build(texture: TextureResource?) {
+            if let terrain = try? awsTerrain.entity(texture: texture) { anchor.addChild(terrain) }
             let featuredBuilding = SettlementData.displayedBuildings.min {
                 simd_length_squared(SIMD2<Float>($0.position.x, $0.position.z)) <
                 simd_length_squared(SIMD2<Float>($1.position.x, $1.position.z))
@@ -66,43 +71,27 @@ struct BaduyMapView: UIViewRepresentable {
                 addLocationLabel(featuredLumbung.name, subtitle: "Ketuk untuk menjelajah", coordinate: featuredLumbung.coordinate)
             }
             Task { @MainActor in
-                #if targetEnvironment(simulator)
-                for b in SettlementData.displayedBuildings {
+                // Build one lightweight procedural house and reuse its primitive
+                // meshes for every settlement building. This avoids loading a
+                // heavyweight USD asset while keeping the lumbung silhouette.
+                let template = Self.makeProceduralLumbung()
+                for (index, b) in SettlementData.displayedBuildings.enumerated() {
+                    if index.isMultiple(of: 32) { await Task.yield() }
                     let coordinate = BaduyWorld.coordinate(b.position)
                     let ground = awsTerrain.point(coordinate)
-                    let surface = awsTerrain.buildingSurface(coordinate, halfWidth: 5.5, halfDepth: 4.5, rotation: b.rotationY)
-                    let lumbung = Self.makeSimulatorLumbung()
-                    lumbung.name = b.id
-                    // Keep the full footprint above the sampled DEM. The terrain
-                    // is downsampled for rendering, so a small clearance avoids
-                    // z-fighting and prevents the house from being swallowed by
-                    // a neighboring DEM triangle.
-                    lumbung.position = [ground.x, surface + 2, ground.z]
-                    lumbung.orientation = simd_quatf(angle: b.rotationY, axis: [0, 1, 0])
-                    if b.id == featuredBuilding?.id, let featuredLumbung {
-                        lumbung.name = featuredLumbung.id
-                        lumbung.generateCollisionShapes(recursive: true)
-                        lumbung.components.set(InputTargetComponent())
-                    }
-                    anchor.addChild(lumbung)
-                }
-                return
-                #else
-                // Flatten the static USD hierarchy once, then share its mesh across houses.
-                guard let template = try? await ModelEntity(named: "lumbung.usdc"),
-                      var model = template.model else { return }
-                for b in SettlementData.displayedBuildings {
+                    let placement = awsTerrain.buildingPlacement(
+                        coordinate,
+                        halfWidth: 3.8,
+                        halfDepth: 3.0,
+                        rotation: b.rotationY
+                    )
                     let lumbung = template.clone(recursive: true)
                     lumbung.name = b.id
-                    lumbung.scale = [6, 6, 6]
-                    lumbung.orientation = simd_quatf(angle: b.rotationY, axis: [0, 1, 0])
-                    let coordinate = BaduyWorld.coordinate(b.position)
-                    let ground = awsTerrain.point(coordinate)
-                    let surface = awsTerrain.buildingSurface(coordinate, halfWidth: Float(b.size.x), halfDepth: Float(b.size.z), rotation: b.rotationY)
-                    lumbung.position = ground
-                    // Measure before attaching to the world so the bounds are local.
-                    let localBounds = lumbung.visualBounds(relativeTo: lumbung)
-                    lumbung.position.y = surface - localBounds.min.y * lumbung.scale.y + 0.2
+                    // The template's posts start at local y = 0. Fit the
+                    // whole house to the local terrain plane so it does not
+                    // float above a slope or remain unnaturally vertical.
+                    lumbung.position = [ground.x, placement.surface + 0.15, ground.z]
+                    lumbung.orientation = placement.orientation
                     if b.id == featuredBuilding?.id, let featuredLumbung {
                         lumbung.name = featuredLumbung.id
                         lumbung.generateCollisionShapes(recursive: true)
@@ -110,7 +99,6 @@ struct BaduyMapView: UIViewRepresentable {
                     }
                     anchor.addChild(lumbung)
                 }
-                #endif
             }
             for landmark in model.landmarks where BaduyWorld.isInsideRealityArea(landmark.coordinate) {
                 let p = awsTerrain.point(landmark.coordinate)
@@ -241,22 +229,49 @@ struct BaduyMapView: UIViewRepresentable {
             anchor.addChild(root)
             locationLabels.append(root)
         }
-        #if targetEnvironment(simulator)
-        private static func makeSimulatorLumbung() -> ModelEntity {
-            let body = MeshResource.generateBox(size: [10, 5, 8])
-            let roof = MeshResource.generateBox(size: [11, 0.7, 9])
-            let material = UnlitMaterial(color: UIColor(red: 0.72, green: 0.48, blue: 0.22, alpha: 1))
+        private static func makeProceduralLumbung() -> ModelEntity {
+            let wood = UnlitMaterial(color: UIColor(red: 0.29, green: 0.19, blue: 0.11, alpha: 1))
+            let wovenWall = UnlitMaterial(color: UIColor(red: 0.57, green: 0.40, blue: 0.23, alpha: 1))
+            let thatch = UnlitMaterial(color: UIColor(red: 0.78, green: 0.64, blue: 0.38, alpha: 1))
+
             let root = ModelEntity()
-            let base = ModelEntity(mesh: body, materials: [material])
-            base.position.y = 2.5
-            root.addChild(base)
-            let cap = ModelEntity(mesh: roof, materials: [material])
-            cap.position.y = 5.35
-            cap.orientation = simd_quatf(angle: .pi / 4, axis: [0, 1, 0])
-            root.addChild(cap)
+            // Keep the illustrative house smaller than the mapped terrain cells.
+            root.scale = [0.7, 0.7, 0.7]
+            let bodyMesh = MeshResource.generateBox(size: [9.5, 4.6, 7.4], cornerRadius: 0.12)
+            let postMesh = MeshResource.generateBox(size: [0.65, 3.8, 0.65], cornerRadius: 0.08)
+            let floorMesh = MeshResource.generateBox(size: [10.4, 0.45, 8.2], cornerRadius: 0.08)
+            let roofMesh = MeshResource.generateBox(size: [5.8, 0.42, 8.8], cornerRadius: 0.08)
+            let ridgeMesh = MeshResource.generateBox(size: [0.75, 0.35, 8.9], cornerRadius: 0.06)
+
+            let body = ModelEntity(mesh: bodyMesh, materials: [wovenWall])
+            body.position.y = 4.7
+            root.addChild(body)
+
+            let floor = ModelEntity(mesh: floorMesh, materials: [wood])
+            floor.position.y = 2.0
+            root.addChild(floor)
+
+            for x: Float in [-3.7, 3.7] {
+                for z: Float in [-2.8, 2.8] {
+                    let post = ModelEntity(mesh: postMesh, materials: [wood])
+                    post.position = [x, 1.9, z]
+                    root.addChild(post)
+                }
+            }
+
+            for side: Float in [-1, 1] {
+                let roof = ModelEntity(mesh: roofMesh, materials: [thatch])
+                roof.position = [side * 2.25, 7.65, 0]
+                roof.orientation = simd_quatf(angle: side * -0.52, axis: [0, 0, 1])
+                root.addChild(roof)
+            }
+
+            let ridge = ModelEntity(mesh: ridgeMesh, materials: [wood])
+            ridge.position.y = 9.05
+            root.addChild(ridge)
+
             return root
         }
-        #endif
         func updateCamera(){let eye=lookAt+SIMD3<Float>(sin(angle)*cos(elevation)*distance,sin(elevation)*distance,cos(angle)*cos(elevation)*distance);camera.look(at:lookAt,from:eye,relativeTo:nil);for label in locationLabels{label.look(at:eye,from:label.position(relativeTo:nil),relativeTo:nil);label.orientation *= simd_quatf(angle:.pi,axis:[0,1,0])}}
         func gestureRecognizer(_ a:UIGestureRecognizer,shouldRecognizeSimultaneouslyWith b:UIGestureRecognizer)->Bool{true}
         @objc func pan(_ g: UIPanGestureRecognizer) { let d = g.translation(in: view); if g.numberOfTouches <= 1 { angle -= Float(d.x) * 0.006; let upper:Float=activeCameraMode == .topDown ? 1.4 : 0.72;elevation=min(upper,max(0.16,elevation+Float(d.y)*0.004)) } else if activeCameraMode == .topDown { let s = distance * 0.0012; lookAt.x += cos(angle) * Float(d.x) * s + sin(angle) * Float(d.y) * s; lookAt.z += -sin(angle) * Float(d.x) * s + cos(angle) * Float(d.y) * s;lookAt.x=min(2200,max(-950,lookAt.x));lookAt.z=min(5400,max(-250,lookAt.z)) }; g.setTranslation(.zero, in: view); updateCamera() }
