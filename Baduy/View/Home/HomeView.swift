@@ -219,8 +219,13 @@ struct HomeView: View {
     var body: some View {
         Group {
             if arObject == nil && arCharacter == nil {
-                BaduyMapView(model: model, cameraMode: cameraMode,
-                             onLandmark: select, onCharacter: interact)
+                BaduyMapView(
+                    model: model,
+                    cameraMode: cameraMode,
+                    onLandmark: select,
+                    onCharacter: interact,
+                    onObject: openObject
+                )
             } else {
                 MapPalette.cream
             }
@@ -321,6 +326,11 @@ struct HomeView: View {
         } else {
             selectedCharacter = character
         }
+    }
+
+    private func openObject(_ object: BaduyARObject) {
+        joystick = .zero
+        arObject = object
     }
 
     private func select(_ landmark: MapLandmark) {

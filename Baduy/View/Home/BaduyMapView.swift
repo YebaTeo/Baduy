@@ -15,7 +15,16 @@ struct BaduyMapView: UIViewRepresentable {
     let cameraMode: BaduyCameraMode
     let onLandmark: (MapLandmark) -> Void
     let onCharacter: (BaduyCharacter) -> Void
-    func makeCoordinator() -> Coordinator { Coordinator(model: model, cameraMode: cameraMode, onLandmark: onLandmark, onCharacter: onCharacter) }
+    let onObject: (BaduyARObject) -> Void
+    func makeCoordinator() -> Coordinator {
+        Coordinator(
+            model: model,
+            cameraMode: cameraMode,
+            onLandmark: onLandmark,
+            onCharacter: onCharacter,
+            onObject: onObject
+        )
+    }
     func makeUIView(context: Context) -> ARView {
         let view = ARView(frame: .zero, cameraMode: .nonAR, automaticallyConfigureSession: false)
         #if targetEnvironment(simulator)
@@ -51,29 +60,49 @@ struct BaduyMapView: UIViewRepresentable {
 
     @MainActor final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         weak var view: ARView?; let camera = PerspectiveCamera(); var anchor = AnchorEntity(world: .zero)
-        var model: HomeViewModel; let onLandmark: (MapLandmark)->Void; let onCharacter: (BaduyCharacter)->Void
+        var model: HomeViewModel
+        let onLandmark: (MapLandmark) -> Void
+        let onCharacter: (BaduyCharacter) -> Void
+        let onObject: (BaduyARObject) -> Void
         var angle: Float = 0.35, elevation: Float = 0.82, distance: Float = 820, lookAt: SIMD3<Float> = [0,0,0]
         private var pinchWorldAnchor: SIMD3<Float>?
         private var activeCameraMode: BaduyCameraMode
         private var cameraIsConfigured = false
         private var playerMarker: Entity?
         var selectable: [String: MapLandmark] = [:]
+        private var culturalPOIs: [String: BaduyARObject] = [:]
         private var locationLabels: [Entity] = []
         var sceneTask: Task<Void, Never>?
         private var buildingTask: Task<Void, Never>?
+        private var poiTask: Task<Void, Never>?
 
         func stop() {
             sceneTask?.cancel()
             sceneTask = nil
             buildingTask?.cancel()
             buildingTask = nil
+            poiTask?.cancel()
+            poiTask = nil
+            culturalPOIs.removeAll()
             anchor.removeFromParent()
             anchor.children.removeAll()
             locationLabels.removeAll()
         }
 
         let awsTerrain = CibolegerTerrain()
-        init(model: HomeViewModel,cameraMode:BaduyCameraMode,onLandmark:@escaping(MapLandmark)->Void,onCharacter:@escaping(BaduyCharacter)->Void){self.model=model;self.activeCameraMode=cameraMode;self.onLandmark=onLandmark;self.onCharacter=onCharacter}
+        init(
+            model: HomeViewModel,
+            cameraMode: BaduyCameraMode,
+            onLandmark: @escaping (MapLandmark) -> Void,
+            onCharacter: @escaping (BaduyCharacter) -> Void,
+            onObject: @escaping (BaduyARObject) -> Void
+        ) {
+            self.model = model
+            self.activeCameraMode = cameraMode
+            self.onLandmark = onLandmark
+            self.onCharacter = onCharacter
+            self.onObject = onObject
+        }
         func build(texture: TextureResource?) {
             if let terrain = try? awsTerrain.entity(texture: texture) { anchor.addChild(terrain) }
             let featuredBuilding = SettlementData.displayedBuildings.min {
@@ -179,11 +208,51 @@ struct BaduyMapView: UIViewRepresentable {
             updatePlayerPosition()
             player.isEnabled = activeCameraMode == .thirdPerson
             setCameraMode(activeCameraMode)
+            addCulturalPOIs()
+        }
+
+        private func addCulturalPOIs() {
+            let requestedCoordinate = model.location?.coordinate
+                ?? MapLandmark.baduyPoints[0].coordinate
+            let coordinate = BaduyWorld.isInsideRealityArea(requestedCoordinate)
+                ? requestedCoordinate
+                : MapLandmark.baduyPoints[0].coordinate
+            let base = awsTerrain.point(coordinate)
+            let offsets: [String: SIMD3<Float>] = [
+                "lumbung": [14, 0, -6],
+                "pintal": [-12, 0, 8],
+                "tenun": [6, 0, 16]
+            ]
+
+            for object in BaduyARObject.allCases {
+                let marker = ModelEntity(
+                    mesh: .generateCylinder(height: 6, radius: 3.5),
+                    materials: [
+                        UnlitMaterial(color: UIColor(red: 0.64, green: 0.38, blue: 0.23, alpha: 1))
+                    ]
+                )
+                let markerName = "cultural_poi_tenun_\(object.rawValue)"
+                marker.name = markerName
+
+                var position = base + (offsets[object.rawValue] ?? .zero)
+                position.y = awsTerrain.terrainHeight(at: position) + 3
+                marker.position = position
+                marker.generateCollisionShapes(recursive: true)
+                marker.components.set(InputTargetComponent())
+                anchor.addChild(marker)
+                culturalPOIs[markerName] = .tenun
+
+                // POI budaya sengaja tanpa tulisan melayang.
+                // Marker tetap interaktif dan membuka ruang AR saat diketuk.
+            }
         }
 
         func setCameraMode(_ mode: BaduyCameraMode) {
             let changed = mode != activeCameraMode || !cameraIsConfigured
             activeCameraMode = mode
+            for label in locationLabels {
+                label.isEnabled = mode == .topDown
+            }
             if let playerMarker {
                 BaduyLeafMarker.setPresentation(playerMarker, standing: mode == .thirdPerson)
                 playerMarker.isEnabled = true
@@ -286,6 +355,7 @@ struct BaduyMapView: UIViewRepresentable {
             }.count
             root.position = ground + [0, 24 + Float(nearbyLabelCount) * 20, 0]
             anchor.addChild(root)
+            root.isEnabled = activeCameraMode == .topDown
             locationLabels.append(root)
         }
         private static func makeProceduralLumbung() -> ModelEntity {
@@ -367,6 +437,24 @@ struct BaduyMapView: UIViewRepresentable {
             guard t >= 0 else { return nil }
             return ray.origin + ray.direction * t
         }
-        @objc func tap(_ g:UITapGestureRecognizer){guard let view else{return};var entity:Entity?=view.entity(at:g.location(in:view));while let current=entity{if let l=selectable[current.name]{onLandmark(l);return};if let c=BaduyCharacter.allCases.first(where:{$0.rawValue==current.name}){onCharacter(c);return};entity=current.parent}}
+        @objc func tap(_ g: UITapGestureRecognizer) {
+            guard let view else { return }
+            var entity: Entity? = view.entity(at: g.location(in: view))
+            while let current = entity {
+                if let object = culturalPOIs[current.name] {
+                    onObject(object)
+                    return
+                }
+                if let landmark = selectable[current.name] {
+                    onLandmark(landmark)
+                    return
+                }
+                if let character = BaduyCharacter.allCases.first(where: { $0.rawValue == current.name }) {
+                    onCharacter(character)
+                    return
+                }
+                entity = current.parent
+            }
+        }
     }
 }
