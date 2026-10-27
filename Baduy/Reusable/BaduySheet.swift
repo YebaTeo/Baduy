@@ -52,6 +52,7 @@ struct BaduySheet<Content: View>: View {
     /// Pinned above the bottom safe area in the expanded sheet.
     var actionTitle: String? = nil
     var action: (() -> Void)? = nil
+    var pageLabel: String? = nil
     @ViewBuilder let content: () -> Content
 
     var body: some View {
@@ -74,6 +75,12 @@ struct BaduySheet<Content: View>: View {
                     .accessibilityLabel("Dengarkan \(title)")
                 }
                 Spacer(minLength: 0)
+                if let pageLabel {
+                    Text(pageLabel)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(BaduySheetStyle.ink.opacity(0.55))
+                        .accessibilityLabel("Halaman \(pageLabel)")
+                }
                 if let closeAction {
                     Button(action: closeAction) {
                         Image(systemName: "xmark")
@@ -112,14 +119,15 @@ struct BaduySheet<Content: View>: View {
                 .padding(.bottom, actionTitle != nil && action != nil ? 24 : 170)
             }
             .scrollBounceBehavior(.basedOnSize)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if let actionTitle, let action {
+            .frame(maxHeight: .infinity)
+            .clipped()
+            // A sibling footer reserves space instead of drawing over scroll content.
+            if let actionTitle, let action {
                     Button(actionTitle, action: action)
                         .buttonStyle(BaduySheetButtonStyle())
                         .padding(.horizontal, 24)
                         .padding(.top, 12)
                         .padding(.bottom, 12)
-                }
             }
             }
             }

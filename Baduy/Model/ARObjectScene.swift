@@ -18,6 +18,9 @@ final class ARObjectScene: NSObject, ObservableObject, UIGestureRecognizerDelega
     private weak var inputView: UIView?
     @Published private(set) var interactionStatus = "Kontrol AR siap"
     private var anchor: AnchorEntity?
+    private let framing = Entity()
+    private var informationHeight: CGFloat = 0
+    private var readingExpanded = false
     private var cameraUpdates: Cancellable?
     private var object: ModelEntity?
     private var gestures: [UIGestureRecognizer] = []
@@ -51,6 +54,7 @@ final class ARObjectScene: NSObject, ObservableObject, UIGestureRecognizerDelega
             Task { @MainActor [weak self] in
                 guard let self, let frame = self.view?.session.currentFrame else { return }
                 self.anchor?.transform = self.displayCameraTransform(frame.camera)
+                self.updateFraming()
             }
         }
         // Loading and UIView creation are independent asynchronous lifecycles.
@@ -190,6 +194,38 @@ final class ARObjectScene: NSObject, ObservableObject, UIGestureRecognizerDelega
         return Transform(matrix: simd_inverse(camera.viewMatrix(for: resolved)))
     }
 
+    func setInformationLayout(height: CGFloat, expanded: Bool) {
+        informationHeight = height
+        readingExpanded = expanded
+        updateFraming()
+    }
+
+    private func updateFraming() {
+        guard let view, object != nil, let camera = view.session.currentFrame?.camera,
+              view.bounds.width > 0, view.bounds.height > 0 else { return }
+        framing.isEnabled = !readingExpanded
+        guard !readingExpanded else { return }
+        guard informationHeight > 0 else {
+            framing.scale = SIMD3(repeating: 1)
+            framing.position = [0, 0.06, -0.8]
+            return
+        }
+        // Convert the unobscured screen rectangle to camera-space at model depth.
+        let orientation = view.window?.windowScene?.interfaceOrientation ?? .portrait
+        let projection = camera.projectionMatrix(for: orientation == .unknown ? .portrait : orientation,
+                                                 viewportSize: view.bounds.size, zNear: 0.01, zFar: 100)
+        let top = view.safeAreaInsets.top + 88
+        let bottom = view.bounds.height - informationHeight - 24
+        let availableHeight = max(0, bottom - top)
+        guard availableHeight > 80 else { framing.isEnabled = false; return }
+        let depth: Float = 0.8
+        let cameraHeight = 2 * depth / abs(projection.columns.1.y)
+        let centerY = (top + bottom) / 2
+        framing.position = [0, (0.5 - Float(centerY / view.bounds.height)) * cameraHeight, -depth]
+        // Medium sheet only shifts the model upward; preserve the user's zoom.
+        framing.scale = SIMD3(repeating: 1)
+    }
+
     private func showModel() {
         guard let view, let object else { return }
         removeGestures()
@@ -201,11 +237,14 @@ final class ARObjectScene: NSObject, ObservableObject, UIGestureRecognizerDelega
             anchor.transform = displayCameraTransform(frame.camera)
         }
         object.transform = .identity
-        object.position = [0, 0.06, -0.8]
+        object.position = .zero
         object.orientation = initialOrientation
-        anchor.addChild(object)
+        framing.transform = .identity
+        framing.addChild(object)
+        anchor.addChild(framing)
         view.scene.addAnchor(anchor)
         self.anchor = anchor
+        updateFraming()
         guard let inputView else { return }
         gestures = []
         let pan = UIPanGestureRecognizer(target: self, action: #selector(drag(_:)))
