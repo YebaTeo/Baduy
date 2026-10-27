@@ -12,6 +12,8 @@ struct ARObjectRoom: View {
     @State private var permissionMessage: String?
     @State private var showSettings = false
     @State private var showInfo = false
+    @State private var infoDetent: PresentationDetent = .medium
+    @State private var infoHeight: CGFloat = 0
     @State private var retryID = 0
     @State private var narrator = AVSpeechSynthesizer()
     @Environment(\.dismiss) private var dismiss
@@ -90,7 +92,10 @@ struct ARObjectRoom: View {
                     }
                     .font(.subheadline)
                     .frame(minHeight: 44)
-                    Button("Kenali \(selection.title)") { showInfo = true }
+                    Button("Kenali \(selection.title)") {
+                        infoDetent = .medium
+                        showInfo = true
+                    }
                         .buttonStyle(BaduySheetButtonStyle())
                 }
                 .padding(16)
@@ -99,23 +104,32 @@ struct ARObjectRoom: View {
                 .padding(.bottom, 8)
             }
         }
-        .sheet(isPresented: $showInfo) {
-            BaduySheet(title: selection.title, style: .white,
-                       audioAction: {
-                           narrator.stopSpeaking(at: .immediate)
-                           let speech = AVSpeechUtterance(string: selection.paragraphs.joined(separator: " "))
-                           speech.voice = AVSpeechSynthesisVoice(language: "id-ID")
-                           narrator.speak(speech)
-                       }, closeAction: { showInfo = false },
-                       compactSummary: selection.paragraphs.first) {
-                ForEach(selection.paragraphs, id: \.self) { Text($0) }
-                if selection == .tenun {
-                    Button("Coba menenun", action: scene.weave)
-                        .buttonStyle(BaduySheetButtonStyle())
-                        .disabled(!scene.placed)
+        .sheet(isPresented: $showInfo, onDismiss: {
+            infoHeight = 0
+            scene.setInformationLayout(height: 0, expanded: false)
+        }) {
+            Group {
+                if selection == .lumbung {
+                    BaduyInfoSheet(title: selection.title, paragraphs: selection.paragraphs,
+                                   style: .white, closeAction: { showInfo = false })
+                } else {
+                    WeavingInfoSheet(
+                        onFinish: { showInfo = false },
+                        onObjectChange: { object in selection = object }
+                    )
                 }
             }
-            .baduySheetPresentation(detents: [.baduyCompact, .medium, .large], interactable: true)
+            .baduySheetPresentation(detents: [.medium, .large], interactable: true)
+            .presentationDetents([.medium, .large], selection: $infoDetent)
+            .onGeometryChange(for: CGFloat.self) { geometry in
+                geometry.size.height + geometry.safeAreaInsets.bottom
+            } action: { height in
+                infoHeight = height
+                scene.setInformationLayout(height: height, expanded: infoDetent == .large)
+            }
+            .onChange(of: infoDetent) { _, detent in
+                scene.setInformationLayout(height: infoHeight, expanded: detent == .large)
+            }
         }
         .task {
             guard ARWorldTrackingConfiguration.isSupported else {
@@ -129,7 +143,7 @@ struct ARObjectRoom: View {
             cameraReady = AVCaptureDevice.authorizationStatus(for: .video) == .authorized
             if !cameraReady {
                 showSettings = true
-                permissionMessage = "Izinkan akses kamera di Pengaturan untuk melihat lumbung, alat pintal, dan alat tenun dalam AR."
+                permissionMessage = "Izinkan akses kamera di Pengaturan untuk melihat lumbung dan alat tenun dalam AR."
             }
         }
         .onChange(of: selection) { _, _ in narrator.stopSpeaking(at: .immediate) }
