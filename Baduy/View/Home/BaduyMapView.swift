@@ -1,6 +1,7 @@
 import SwiftUI
 import RealityKit
 import UIKit
+import ARKit
 
 enum BaduyCameraMode: String, CaseIterable, Identifiable {
     case topDown
@@ -23,11 +24,11 @@ struct BaduyMapView: UIViewRepresentable {
         view.environment.background = .color(UIColor(red: 0.94, green: 0.91, blue: 0.82, alpha: 1))
         let c = context.coordinator; c.view = view
         let anchor = AnchorEntity(world: .zero); c.anchor = anchor; view.scene.addAnchor(anchor)
-        Task { @MainActor [weak c] in
+        c.sceneTask = Task { @MainActor [weak c] in
             let texture = try? await TerrainTexture.make()
             guard let c else { return }
             await c.awsTerrain.loadRemoteElevation()
-            guard c.view != nil else { return }
+            guard !Task.isCancelled, c.view != nil else { return }
             c.build(texture: texture)
         }
         anchor.addChild(c.camera); c.updateCamera()
@@ -42,6 +43,12 @@ struct BaduyMapView: UIViewRepresentable {
         context.coordinator.setCameraMode(cameraMode)
     }
 
+    static func dismantleUIView(_ view: ARView, coordinator: Coordinator) {
+        coordinator.stop()
+        view.session.pause()
+        view.scene.anchors.removeAll()
+    }
+
     @MainActor final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         weak var view: ARView?; let camera = PerspectiveCamera(); var anchor = AnchorEntity(world: .zero)
         var model: HomeViewModel; let onLandmark: (MapLandmark)->Void; let onCharacter: (BaduyCharacter)->Void
@@ -52,6 +59,19 @@ struct BaduyMapView: UIViewRepresentable {
         private var playerMarker: ModelEntity?
         var selectable: [String: MapLandmark] = [:]
         private var locationLabels: [Entity] = []
+        var sceneTask: Task<Void, Never>?
+        private var buildingTask: Task<Void, Never>?
+
+        func stop() {
+            sceneTask?.cancel()
+            sceneTask = nil
+            buildingTask?.cancel()
+            buildingTask = nil
+            anchor.removeFromParent()
+            anchor.children.removeAll()
+            locationLabels.removeAll()
+        }
+
         let awsTerrain = CibolegerTerrain()
         init(model: HomeViewModel,cameraMode:BaduyCameraMode,onLandmark:@escaping(MapLandmark)->Void,onCharacter:@escaping(BaduyCharacter)->Void){self.model=model;self.activeCameraMode=cameraMode;self.onLandmark=onLandmark;self.onCharacter=onCharacter}
         func build(texture: TextureResource?) {
@@ -73,13 +93,15 @@ struct BaduyMapView: UIViewRepresentable {
                 selectable[featuredLumbung.id] = featuredLumbung
                 addLocationLabel(featuredLumbung.name, subtitle: "Ketuk untuk menjelajah", coordinate: featuredLumbung.coordinate)
             }
-            Task { @MainActor in
+            buildingTask = Task { @MainActor [weak self] in
+                guard let self else { return }
                 // Build one lightweight procedural house and reuse its primitive
                 // meshes for every settlement building. This avoids loading a
                 // heavyweight USD asset while keeping the lumbung silhouette.
                 let template = Self.makeProceduralLumbung()
                 for (index, b) in SettlementData.displayedBuildings.enumerated() {
                     if index.isMultiple(of: 32) { await Task.yield() }
+                    guard !Task.isCancelled else { return }
                     let coordinate = BaduyWorld.coordinate(b.position)
                     let ground = awsTerrain.point(coordinate)
                     let placement = awsTerrain.buildingPlacement(

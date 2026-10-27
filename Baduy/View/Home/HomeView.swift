@@ -204,6 +204,7 @@ struct HomeView: View {
     @State private var interactionDate = Date.now
     @State private var selectedCharacter: BaduyCharacter?
     @State private var arCharacter: BaduyCharacter?
+    @State private var arObject: BaduyARObject?
     @State private var cameraMode: BaduyCameraMode = .topDown
     @Environment(\.scenePhase) private var scenePhase
 
@@ -212,17 +213,36 @@ struct HomeView: View {
     }
 
     var body: some View {
-        BaduyMapView(
-            model: model,
-            cameraMode: cameraMode,
-            onLandmark: select,
-            onCharacter: interact
-        )
+        Group {
+            if arObject == nil && arCharacter == nil {
+                BaduyMapView(model: model, cameraMode: cameraMode,
+                             onLandmark: select, onCharacter: interact)
+            } else {
+                MapPalette.cream
+            }
+        }
         .ignoresSafeArea()
         .overlay(alignment: .top) {
-            MapTopChrome(status: model.status, cameraMode: $cameraMode)
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
+            VStack(alignment: .trailing, spacing: 12) {
+                MapTopChrome(status: model.status, cameraMode: $cameraMode)
+                Menu {
+                    ForEach(BaduyARObject.allCases) { object in
+                        Button(object.title, systemImage: object.symbol) {
+                            joystick = .zero
+                            arObject = object
+                        }
+                    }
+                } label: {
+                    Image(systemName: "camera.fill")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 48, height: 48)
+                        .background(MapPalette.indigo, in: Circle())
+                }
+                .accessibilityLabel("Jelajahi objek dalam AR")
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
         }
         .overlay(alignment: .bottomLeading) {
             MapBottomChrome(cameraMode: cameraMode)
@@ -231,6 +251,9 @@ struct HomeView: View {
         }
         .fullScreenCover(item: $arCharacter) { character in
             ARCharacterRoom(initialCharacter: character)
+        }
+        .fullScreenCover(item: $arObject) { object in
+            ARObjectRoom(initialObject: object)
         }
         .sheet(item: $selectedCharacter) { character in
             CharacterConversationView(character: character)
@@ -256,7 +279,7 @@ struct HomeView: View {
         .onReceive(Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()) { date in
             let elapsed = date.timeIntervalSince(lastMovementTick)
             lastMovementTick = date
-            guard scenePhase == .active, selectedCharacter == nil, arCharacter == nil, joystick != .zero else { return }
+            guard scenePhase == .active, selectedCharacter == nil, arCharacter == nil, arObject == nil, joystick != .zero else { return }
             model.moveDebugPlayer(east: Double(joystick.width), north: -Double(joystick.height), elapsed: elapsed)
         }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { date in

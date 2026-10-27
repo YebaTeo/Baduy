@@ -243,10 +243,10 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = DTTY9ZX5T4;
+				DEVELOPMENT_TEAM = Q8FV46GXD8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Kamera digunakan untuk bertemu Akang dan Teteh di ruang AR setelah mendekati karakter pada peta.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Kamera digunakan untuk melihat karakter, lumbung, alat pintal, dan alat tenun dalam ruang AR.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Your location moves your player on the Baduy map and detects nearby landmarks.";
 				INFOPLIST_KEY_NSMotionUsageDescription = "Baduy menggunakan sensor gerak dan kompas untuk menggerakkan posisi virtual Anda di peta.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -278,10 +278,10 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = DTTY9ZX5T4;
+				DEVELOPMENT_TEAM = Q8FV46GXD8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Kamera digunakan untuk bertemu Akang dan Teteh di ruang AR setelah mendekati karakter pada peta.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Kamera digunakan untuk melihat karakter, lumbung, alat pintal, dan alat tenun dalam ruang AR.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Your location moves your player on the Baduy map and detects nearby landmarks.";
 				INFOPLIST_KEY_NSMotionUsageDescription = "Baduy menggunakan sensor gerak dan kompas untuk menggerakkan posisi virtual Anda di peta.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

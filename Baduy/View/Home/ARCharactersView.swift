@@ -6,14 +6,32 @@ extension BaduyCharacter {
     private static var models: [BaduyCharacter: Entity] = [:]
     private static var temporarySharedModel: Entity?
 
+    /// Lightweight stand-in for the optional character asset, not a replacement download.
+    private static func placeholder(height: Float) -> Entity {
+        let root = Entity()
+        let material = SimpleMaterial(color: .systemTeal, roughness: 0.9, isMetallic: false)
+        let body = ModelEntity(mesh: .generateCylinder(height: height * 0.65, radius: height * 0.14), materials: [material])
+        body.position.y = height * 0.325
+        let head = ModelEntity(mesh: .generateSphere(radius: height * 0.15), materials: [material])
+        head.position.y = height * 0.83
+        root.addChild(body)
+        root.addChild(head)
+        root.components.set(CollisionComponent(shapes: [
+            .generateBox(size: [height * 0.3, height, height * 0.3])
+                .offsetBy(translation: [0, height / 2, 0])
+        ]))
+        root.components.set(InputTargetComponent())
+        return root
+    }
+
     /// Both worlds share imported mesh/texture resources, with independent entity transforms.
     func makeEntity(height: Float = 0.9) async throws -> Entity {
         // Temporary lightweight asset used for both interaction points while
         // the final character models are being optimized.
         let resourceName = "seahorse"
         guard let url = Bundle.main.url(forResource: resourceName, withExtension: "usdz") else {
-            print("[Baduy][USDZ] MISSING: \(resourceName).usdz in Bundle.main")
-            throw CocoaError(.fileNoSuchFile)
+            // Keep character interactions usable when the optional model is absent.
+            return Self.placeholder(height: height)
         }
         print("[Baduy][USDZ] START \(resourceName).usdz for \(rawValue) path=\(url.path)")
         let template: Entity
