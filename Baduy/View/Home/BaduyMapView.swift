@@ -162,7 +162,7 @@ struct BaduyMapView: UIViewRepresentable {
                         )
                         let worldOffset = Self.rotated(scaledFoot, by: lumbung.orientation)
                         let worldFoot = lumbung.position + worldOffset
-                        let terrainY = awsTerrain.terrainHeight(at: [worldFoot.x, 0, worldFoot.z])
+                        let terrainY = self.awsTerrain.terrainHeight(at: [worldFoot.x, 0, worldFoot.z])
                         return terrainY - worldFoot.y
                     }
                     // Seat the lowest-ground foot too; a small intersection on
@@ -279,7 +279,7 @@ struct BaduyMapView: UIViewRepresentable {
                 distance = 58
                 if let playerMarker {
                     let player = playerMarker.position(relativeTo: nil)
-                    lookAt = player + [0, 5, -16]
+                    lookAt = player + [0, 7.7, 0]
                 }
             }
             updateCamera()
@@ -300,7 +300,7 @@ struct BaduyMapView: UIViewRepresentable {
                 coordinate, halfWidth: 4.7, halfDepth: 7.5, rotation: 0
             ).orientation
             if activeCameraMode == .thirdPerson {
-                lookAt = ground + [0, 5, -16]
+                lookAt = ground + [0, 7.7, 0]
             }
         }
 

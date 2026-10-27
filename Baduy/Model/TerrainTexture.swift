@@ -1,6 +1,13 @@
 import UIKit
 import RealityKit
 
+private nonisolated struct TerrainElevationData: Decodable, Sendable {
+    let width: Int
+    let height: Int
+    let scale: Int
+    let values: [Int]
+}
+
 @MainActor
 enum TerrainTexture {
     private static var cachedTexture: TextureResource?
@@ -13,14 +20,18 @@ enum TerrainTexture {
         let task = Task { @MainActor in
             let image = try await Task.detached(priority: .userInitiated) {
                 let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-                let url = directory.appendingPathComponent("baduy-terrain-sage-2k-v3.png")
+                let url = directory.appendingPathComponent("baduy-terrain-sage-2k-v7.png")
                 if let image = UIImage(contentsOfFile: url.path)?.cgImage { return image }
                 let image = renderImage()
                 if let data = image.pngData() { try? data.write(to: url, options: .atomic) }
                 guard let cgImage = image.cgImage else { throw CocoaError(.fileReadCorruptFile) }
                 return cgImage
             }.value
-            return try TextureResource.generate(from: image, options: .init(semantic: .color))
+            return try await TextureResource(
+                image: image,
+                withName: "baduy-terrain-sage-v7",
+                options: .init(semantic: .color)
+            )
         }
         loadingTask = task
         defer { loadingTask = nil }
@@ -30,6 +41,14 @@ enum TerrainTexture {
     }
 
     nonisolated private static func renderImage() -> UIImage {
+        let elevationData: TerrainElevationData? = {
+            guard let url = Bundle.main.url(forResource: "ciboleger-dem", withExtension: "json"),
+                  let data = try? Data(contentsOf: url) else { return nil }
+            return try? JSONDecoder().decode(TerrainElevationData.self, from: data)
+        }()
+        let minimumElevation = elevationData?.values.min() ?? 0
+        let maximumElevation = elevationData?.values.max() ?? 1
+        let elevationRange = max(1, maximumElevation - minimumElevation)
 
         // 2K keeps the map responsive while per-pixel rendering and smooth
         // color variation avoid the blocky look of the old raster.
@@ -66,14 +85,26 @@ enum TerrainTexture {
                     let pz = Float(y) / Float(size) * (halfSpan * 2.0) - halfSpan
                     do {
                         // Decorative relief for the illustrated color texture.
+                        let sourceX = min(255, x * 256 / size)
+                        let sourceY = min(255, y * 256 / size)
+                        let sourceIndex = sourceY * 256 + sourceX
                         let terrainHeight = BaduyWorld.height(px, pz)
                         // Convert terrain elevation into a continuous low-to-high
                         // palette. The texture is regenerated with each cache
                         // version so changes to this scale are visible on device.
-                        let elevationRatio = max(0, min(1, (terrainHeight + 8) / 42))
+                        let fallbackRatio = max(0, min(1, (terrainHeight + 8) / 42))
+                        let heightRatio: Float
+                        if let elevationData, elevationData.values.indices.contains(sourceIndex) {
+                            heightRatio = Float(elevationData.values[sourceIndex] - minimumElevation)
+                                / Float(elevationRange)
+                        } else {
+                            heightRatio = fallbackRatio
+                        }
                         let slopeX = (BaduyWorld.height(px + 1, pz) - BaduyWorld.height(px - 1, pz)) / 2
                         let slopeZ = (BaduyWorld.height(px, pz + 1) - BaduyWorld.height(px, pz - 1)) / 2
-                        let relief = Double(max(-0.035, min(0.035, (-slopeX - slopeZ) * 0.07)))
+                        // A restrained directional relief gives the terrain some
+                        // depth without changing its original illustrated style.
+                        let relief = Double(max(-0.05, min(0.05, (-slopeX - slopeZ) * 0.09)))
                         // Broad, continuous variation reads as land cover at
                         // map scale. Avoid high-frequency pixel noise, which
                         // looked blocky when the user zoomed into the map.
@@ -84,12 +115,13 @@ enum TerrainTexture {
 
                         // Forest -> sage -> warm bamboo green. Smoothstep keeps
                         // the transition soft without visible color bands.
-                        let ratio = Double(elevationRatio) * 2
+                        let ratio = Double(fallbackRatio) * 2
                         let segment = min(Int(ratio), 1)
                         let t = ratio - Double(segment)
                         let blend = t * t * (3 - 2 * t)
                         let color = stops[segment] * (1 - blend) + stops[segment + 1] * blend
-                        let shade = relief + Double(grain) * 0.18
+                        let heightShade = (Double(heightRatio) - 0.5) * 0.025
+                        let shade = relief * 0.25 + heightShade + Double(grain) * 0.08
                         let r = max(0, min(1, color.x + shade))
                         let g = max(0, min(1, color.y + shade))
                         let b = max(0, min(1, color.z + shade))
