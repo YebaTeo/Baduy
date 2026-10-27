@@ -56,7 +56,7 @@ struct BaduyMapView: UIViewRepresentable {
         private var pinchWorldAnchor: SIMD3<Float>?
         private var activeCameraMode: BaduyCameraMode
         private var cameraIsConfigured = false
-        private var playerMarker: ModelEntity?
+        private var playerMarker: Entity?
         var selectable: [String: MapLandmark] = [:]
         private var locationLabels: [Entity] = []
         var sceneTask: Task<Void, Never>?
@@ -163,13 +163,17 @@ struct BaduyMapView: UIViewRepresentable {
             for poi in BaduyLandmark.samples where poi.category != "village" && BaduyWorld.isInsideRealityArea(poi.coordinate) {
                 addLocationLabel(poi.title, subtitle: poi.subtitle, coordinate: poi.coordinate)
             }
-            for character in BaduyCharacter.allCases { if let c=model.coordinate(for:character), BaduyWorld.isInsideRealityArea(c){let p=awsTerrain.point(c);let m=ModelEntity(mesh:.generateSphere(radius:5),materials:[UnlitMaterial(color:character == .cowo ? .systemTeal : .systemYellow)]);m.name=character.rawValue;
-                m.position=p+[0,7,0];m.generateCollisionShapes(recursive:true);m.components.set(InputTargetComponent());anchor.addChild(m)} }
-            let player = ModelEntity(
-                mesh: .generateSphere(radius: 4),
-                materials: [UnlitMaterial(color: UIColor(red: 0.20, green: 0.72, blue: 0.76, alpha: 1))]
-            )
-            player.name = "user_position"
+            for character in BaduyCharacter.allCases {
+                if let coordinate = model.coordinate(for: character), BaduyWorld.isInsideRealityArea(coordinate) {
+                    var ground = awsTerrain.point(coordinate)
+                    ground.y = awsTerrain.terrainHeight(at: ground)
+                    let marker = BaduyLeafMarker.makeCharacter()
+                    marker.name = character.rawValue
+                    marker.position = ground
+                    anchor.addChild(marker)
+                }
+            }
+            let player = BaduyLeafMarker.make()
             playerMarker = player
             anchor.addChild(player)
             updatePlayerPosition()
@@ -180,7 +184,10 @@ struct BaduyMapView: UIViewRepresentable {
         func setCameraMode(_ mode: BaduyCameraMode) {
             let changed = mode != activeCameraMode || !cameraIsConfigured
             activeCameraMode = mode
-            playerMarker?.isEnabled = mode == .thirdPerson
+            if let playerMarker {
+                BaduyLeafMarker.setPresentation(playerMarker, standing: mode == .thirdPerson)
+                playerMarker.isEnabled = true
+            }
             updatePlayerPosition()
             guard changed else {
                 if mode == .thirdPerson { updateCamera() }
@@ -217,8 +224,12 @@ struct BaduyMapView: UIViewRepresentable {
             let coordinate = BaduyWorld.isInsideRealityArea(requestedCoordinate)
                 ? requestedCoordinate
                 : MapLandmark.baduyPoints[0].coordinate
-            let ground = awsTerrain.point(coordinate)
-            playerMarker.position = ground + [0, 5, 0]
+            var ground = awsTerrain.point(coordinate)
+            ground.y = awsTerrain.terrainHeight(at: ground)
+            playerMarker.position = ground
+            playerMarker.orientation = awsTerrain.buildingPlacement(
+                coordinate, halfWidth: 4.7, halfDepth: 7.5, rotation: 0
+            ).orientation
             if activeCameraMode == .thirdPerson {
                 lookAt = ground + [0, 5, -16]
             }
