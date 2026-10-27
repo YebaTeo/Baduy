@@ -2,6 +2,7 @@ import SwiftUI
 import RealityKit
 import UIKit
 import ARKit
+import Combine
 
 enum BaduyCameraMode: String, CaseIterable, Identifiable {
     case topDown
@@ -41,6 +42,9 @@ struct BaduyMapView: UIViewRepresentable {
             c.build(texture: texture)
         }
         anchor.addChild(c.camera); c.updateCamera()
+        c.frameSubscription = view.scene.subscribe(to: SceneEvents.Update.self) { [weak c] event in
+            c?.advanceFrame(event.deltaTime)
+        }
         let pan = UIPanGestureRecognizer(target: c, action: #selector(Coordinator.pan(_:))); pan.delegate = c; view.addGestureRecognizer(pan)
         let pinch = UIPinchGestureRecognizer(target: c, action: #selector(Coordinator.pinch(_:))); pinch.delegate = c; view.addGestureRecognizer(pinch)
         view.addGestureRecognizer(UITapGestureRecognizer(target: c, action: #selector(Coordinator.tap(_:))))
@@ -69,6 +73,10 @@ struct BaduyMapView: UIViewRepresentable {
         private var activeCameraMode: BaduyCameraMode
         private var cameraIsConfigured = false
         private var playerMarker: Entity?
+        var frameSubscription: (any Cancellable)?
+        private var lastPlayerCoordinate: CLLocationCoordinate2D?
+        private var targetPosition: SIMD3<Float>?
+        private var targetOrientation = simd_quatf()
         var selectable: [String: MapLandmark] = [:]
         private var culturalPOIs: [String: BaduyARObject] = [:]
         private var locationLabels: [Entity] = []
@@ -77,6 +85,8 @@ struct BaduyMapView: UIViewRepresentable {
         private var poiTask: Task<Void, Never>?
 
         func stop() {
+            frameSubscription?.cancel()
+            frameSubscription = nil
             sceneTask?.cancel()
             sceneTask = nil
             buildingTask?.cancel()
@@ -249,6 +259,7 @@ struct BaduyMapView: UIViewRepresentable {
 
         func setCameraMode(_ mode: BaduyCameraMode) {
             let changed = mode != activeCameraMode || !cameraIsConfigured
+            guard changed else { return }
             activeCameraMode = mode
             for label in locationLabels {
                 label.isEnabled = mode == .topDown
@@ -258,10 +269,6 @@ struct BaduyMapView: UIViewRepresentable {
                 playerMarker.isEnabled = true
             }
             updatePlayerPosition()
-            guard changed else {
-                if mode == .thirdPerson { updateCamera() }
-                return
-            }
             cameraIsConfigured = true
             switch mode {
             case .topDown:
@@ -293,14 +300,38 @@ struct BaduyMapView: UIViewRepresentable {
             let coordinate = BaduyWorld.isInsideRealityArea(requestedCoordinate)
                 ? requestedCoordinate
                 : MapLandmark.baduyPoints[0].coordinate
+            if let lastPlayerCoordinate,
+               lastPlayerCoordinate.latitude == coordinate.latitude,
+               lastPlayerCoordinate.longitude == coordinate.longitude { return }
+            lastPlayerCoordinate = coordinate
             var ground = awsTerrain.point(coordinate)
             ground.y = awsTerrain.terrainHeight(at: ground)
-            playerMarker.position = ground
-            playerMarker.orientation = awsTerrain.buildingPlacement(
+            targetOrientation = awsTerrain.buildingPlacement(
                 coordinate, halfWidth: 4.7, halfDepth: 7.5, rotation: 0
             ).orientation
+            if targetPosition == nil || simd_distance(playerMarker.position, ground) > 50 {
+                playerMarker.position = ground
+                playerMarker.orientation = targetOrientation
+            }
+            targetPosition = ground
+        }
+
+        func advanceFrame(_ deltaTime: TimeInterval) {
+            guard view?.window != nil else { return }
+            updatePlayerPosition()
+            guard let playerMarker, let targetPosition else { return }
+            let remaining = simd_distance(playerMarker.position, targetPosition)
+            guard remaining > 0.001 else { return }
+            // About 90% of each new step is shown within 0.1 seconds.
+            let blend = Float(1 - exp(-24 * min(deltaTime, 0.1)))
+            var position = remaining < 0.01 ? targetPosition
+                : playerMarker.position + (targetPosition - playerMarker.position) * blend
+            position.y = awsTerrain.terrainHeight(at: position)
+            playerMarker.position = position
+            playerMarker.orientation = simd_slerp(playerMarker.orientation, targetOrientation, blend)
             if activeCameraMode == .thirdPerson {
-                lookAt = ground + [0, 7.7, 0]
+                lookAt = position + [0, 7.7, 0]
+                updateCamera()
             }
         }
 
@@ -412,7 +443,7 @@ struct BaduyMapView: UIViewRepresentable {
             return vector + rotation.vector.w * twiceCross + simd_cross(quaternionVector, twiceCross)
         }
 
-        func updateCamera(){let eye=lookAt+SIMD3<Float>(sin(angle)*cos(elevation)*distance,sin(elevation)*distance,cos(angle)*cos(elevation)*distance);camera.look(at:lookAt,from:eye,relativeTo:nil);for label in locationLabels{label.look(at:eye,from:label.position(relativeTo:nil),relativeTo:nil);label.orientation *= simd_quatf(angle:.pi,axis:[0,1,0])}}
+        func updateCamera(){let eye=lookAt+SIMD3<Float>(sin(angle)*cos(elevation)*distance,sin(elevation)*distance,cos(angle)*cos(elevation)*distance);camera.look(at:lookAt,from:eye,relativeTo:nil);for label in locationLabels where label.isEnabled {label.look(at:eye,from:label.position(relativeTo:nil),relativeTo:nil);label.orientation *= simd_quatf(angle:.pi,axis:[0,1,0])}}
         func gestureRecognizer(_ a:UIGestureRecognizer,shouldRecognizeSimultaneouslyWith b:UIGestureRecognizer)->Bool{true}
         @objc func pan(_ g: UIPanGestureRecognizer) { let d = g.translation(in: view); if g.numberOfTouches <= 1 { angle -= Float(d.x) * 0.006; let upper:Float=activeCameraMode == .topDown ? 1.4 : 0.72;elevation=min(upper,max(0.16,elevation+Float(d.y)*0.004)) } else if activeCameraMode == .topDown { let s = distance * 0.0012; lookAt.x += cos(angle) * Float(d.x) * s + sin(angle) * Float(d.y) * s; lookAt.z += -sin(angle) * Float(d.x) * s + cos(angle) * Float(d.y) * s;lookAt.x=min(2200,max(-950,lookAt.x));lookAt.z=min(5400,max(-250,lookAt.z)) }; g.setTranslation(.zero, in: view); updateCamera() }
         @objc func pinch(_ g: UIPinchGestureRecognizer) {

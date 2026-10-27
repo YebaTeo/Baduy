@@ -136,6 +136,9 @@ final class HomeViewModel: NSObject, CLLocationManagerDelegate {
 
     @ObservationIgnored private let locationManager = CLLocationManager()
     @ObservationIgnored private let pedometer = CMPedometer()
+    @ObservationIgnored private let motionManager = CMMotionManager()
+    @ObservationIgnored private var stepArmed = true
+    @ObservationIgnored private var lastMotionStep: TimeInterval = 0
     @ObservationIgnored private var isWalkingSimulationActive = false
     @ObservationIgnored private var insideLandmarks: Set<String> = []
     @ObservationIgnored private var isActive = false
@@ -148,8 +151,10 @@ final class HomeViewModel: NSObject, CLLocationManagerDelegate {
         self.trails = trails.isEmpty ? MapLandmark.baduyTrails : trails
         super.init()
         locationManager.delegate = self
-        locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        locationManager.distanceFilter = 2
+        locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+        locationManager.distanceFilter = kCLDistanceFilterNone
+        locationManager.activityType = .fitness
+        locationManager.pausesLocationUpdatesAutomatically = false
     }
 
     func distance(to landmark: MapLandmark) -> CLLocationDistance? {
@@ -189,6 +194,36 @@ final class HomeViewModel: NSObject, CLLocationManagerDelegate {
             locationManager.startUpdatingHeading()
         }
 
+        // Detect gait peaks directly instead of waiting for batched pedometer
+        // totals. Hysteresis and a refractory period reject repeated peaks.
+        if motionManager.isDeviceMotionAvailable {
+            stepArmed = true
+            lastMotionStep = 0
+            motionManager.deviceMotionUpdateInterval = 1.0 / 50.0
+            motionManager.startDeviceMotionUpdates(to: .main) { [weak self] motion, error in
+                guard let self, self.isWalkingSimulationActive, self.isActive else { return }
+                guard let motion, error == nil else {
+                    self.motionManager.stopDeviceMotionUpdates()
+                    self.startPedometerFallback()
+                    return
+                }
+                let acceleration = motion.userAcceleration
+                let gravity = motion.gravity
+                let vertical = -(acceleration.x * gravity.x + acceleration.y * gravity.y + acceleration.z * gravity.z)
+                if vertical < 0.025 { self.stepArmed = true }
+                guard self.stepArmed, vertical > 0.12,
+                      motion.timestamp - self.lastMotionStep >= 0.32 else { return }
+                self.stepArmed = false
+                self.lastMotionStep = motion.timestamp
+                let bearing = self.debugHeading * .pi / 180
+                self.advanceDebugPlayer(east: sin(bearing) * 0.72, north: cos(bearing) * 0.72)
+            }
+            return
+        }
+        startPedometerFallback()
+    }
+
+    private func startPedometerFallback() {
         guard CMPedometer.isStepCountingAvailable() else { return }
         pedometer.startUpdates(from: .now) { [weak self] data, _ in
             guard let data else { return }
@@ -213,6 +248,7 @@ final class HomeViewModel: NSObject, CLLocationManagerDelegate {
         guard isWalkingSimulationActive else { return }
         isWalkingSimulationActive = false
         pedometer.stopUpdates()
+        motionManager.stopDeviceMotionUpdates()
         locationManager.stopUpdatingHeading()
     }
 
@@ -248,7 +284,7 @@ final class HomeViewModel: NSObject, CLLocationManagerDelegate {
         if isAtCiboleger == false, encounterOrigin == nil, location.horizontalAccuracy <= interactionRadius {
             encounterOrigin = location.coordinate
         }
-        status = isDebugMode ? "DEBUG · Gerakkan analog untuk berjalan" : "GPS ±\(Int(location.horizontalAccuracy)) m"
+        status = isDebugMode ? "DEBUG · Berjalan mengikuti arah perangkat" : "GPS ±\(Int(location.horizontalAccuracy)) m"
         for landmark in landmarks {
             let center = CLLocation(latitude: landmark.coordinate.latitude,
                                     longitude: landmark.coordinate.longitude)
