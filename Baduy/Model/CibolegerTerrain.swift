@@ -307,27 +307,46 @@ final class CibolegerTerrain {
         }
 
         let floorY = (outerPoints.map(\.y).min() ?? 0) - 18
-        var skirtVertices: [SIMD3<Float>] = []
-        var skirtIndices: [UInt32] = []
-        skirtVertices.reserveCapacity(outerPoints.count * 2)
-        skirtIndices.reserveCapacity(outerPoints.count * 12)
-        for outer in outerPoints {
-            skirtVertices += [outer, [outer.x, floorY, outer.z]]
+        let soilBands: [(height: Float, color: UIColor)] = [
+            (0.24, UIColor(red: 0.35, green: 0.25, blue: 0.16, alpha: 1)),
+            (0.48, UIColor(red: 0.48, green: 0.29, blue: 0.18, alpha: 1)),
+            (0.70, UIColor(red: 0.62, green: 0.36, blue: 0.21, alpha: 1)),
+            (0.86, UIColor(red: 0.70, green: 0.43, blue: 0.25, alpha: 1)),
+            (1.00, UIColor(red: 0.43, green: 0.30, blue: 0.20, alpha: 1))
+        ]
+
+        // Build the exposed cut face as stacked soil bands. Keeping each band
+        // as its own mesh gives the diorama a readable layered-earth edge.
+        for bandIndex in soilBands.indices {
+            let lowerFraction = bandIndex == 0 ? 0 : soilBands[bandIndex - 1].height
+            let upperFraction = soilBands[bandIndex].height
+            var bandVertices: [SIMD3<Float>] = []
+            var bandIndices: [UInt32] = []
+            bandVertices.reserveCapacity(outerPoints.count * 2)
+            bandIndices.reserveCapacity(outerPoints.count * 12)
+
+            for outer in outerPoints {
+                let topY = outer.y + (floorY - outer.y) * lowerFraction
+                let bottomY = outer.y + (floorY - outer.y) * upperFraction
+                bandVertices += [[outer.x, topY, outer.z], [outer.x, bottomY, outer.z]]
+            }
+
+            for index in outerPoints.indices {
+                let next = (index + 1) % outerPoints.count
+                let topA = UInt32(index * 2)
+                let bottomA = topA + 1
+                let topB = UInt32(next * 2)
+                let bottomB = topB + 1
+                bandIndices += [topA, bottomA, topB, topB, bottomA, bottomB]
+                bandIndices += [topB, bottomA, topA, bottomB, bottomA, topB]
+            }
+
+            parent.addChild(try Self.mesh(
+                bandVertices,
+                bandIndices,
+                color: soilBands[bandIndex].color
+            ))
         }
-        for index in outerPoints.indices {
-            let next = (index + 1) % outerPoints.count
-            let topA = UInt32(index * 2)
-            let bottomA = topA + 1
-            let topB = UInt32(next * 2)
-            let bottomB = topB + 1
-            skirtIndices += [topA, bottomA, topB, topB, bottomA, bottomB]
-            skirtIndices += [topB, bottomA, topA, bottomB, bottomA, topB]
-        }
-        parent.addChild(try Self.mesh(
-            skirtVertices,
-            skirtIndices,
-            color: UIColor(red: 0.31, green: 0.25, blue: 0.16, alpha: 1)
-        ))
     }
 
     private func addRoads(to parent: Entity) throws {
