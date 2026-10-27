@@ -105,6 +105,30 @@ final class HomeViewModel: NSObject, CLLocationManagerDelegate {
         return location.distance(from: center) <= gateway.radius
     }
 
+    /// The closest village geofence currently containing the user.
+    var currentGeofence: MapLandmark? {
+        guard let location else { return nil }
+        return landmarks
+            .filter { landmark in
+                let center = CLLocation(
+                    latitude: landmark.coordinate.latitude,
+                    longitude: landmark.coordinate.longitude
+                )
+                return location.distance(from: center) <= landmark.radius
+            }
+            .min { lhs, rhs in
+                let lhsCenter = CLLocation(
+                    latitude: lhs.coordinate.latitude,
+                    longitude: lhs.coordinate.longitude
+                )
+                let rhsCenter = CLLocation(
+                    latitude: rhs.coordinate.latitude,
+                    longitude: rhs.coordinate.longitude
+                )
+                return location.distance(from: lhsCenter) < location.distance(from: rhsCenter)
+            }
+    }
+
     var selectedLandmark: MapLandmark?
     var enteredLandmark: MapLandmark?
     let landmarks: [MapLandmark]

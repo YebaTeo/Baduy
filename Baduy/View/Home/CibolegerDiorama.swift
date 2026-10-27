@@ -48,7 +48,7 @@ private final class DioramaScene {
     let camera = PerspectiveCamera()
     private let origin = MapLandmark.baduyPoints[0].coordinate
     private let ground = ModelEntity(mesh: .generatePlane(width: 20_000, depth: 20_000), materials: [UnlitMaterial(color: UIColor(red: 0.12, green: 0.23, blue: 0.38, alpha: 1))])
-    private let player = ModelEntity(mesh: .generateSphere(radius: 3), materials: [UnlitMaterial(color: .cyan)])
+    private let player = BaduyLeafMarker.make()
     private var characters: [BaduyCharacter: Entity] = [:]
     private let terrain = CibolegerTerrain()
     // Convert MapKit coordinates to local metres, with north along negative Z.
@@ -92,7 +92,7 @@ private final class DioramaScene {
         }
         addVillagePaths(model.landmarks)
         for character in BaduyCharacter.allCases {
-            let entity = ModelEntity(mesh: .generateSphere(radius: 4), materials: [UnlitMaterial(color: character == .cowo ? .systemTeal : .systemPurple)])
+            let entity = BaduyLeafMarker.makeCharacter()
             entity.name = character.rawValue
             entity.generateCollisionShapes(recursive: true)
             entity.components.set(InputTargetComponent())
@@ -119,11 +119,22 @@ private final class DioramaScene {
         let safeElevation = min(1.35, max(0.35, elevation))
         camera.look(at: target, from: target + [sin(angle) * cos(safeElevation) * distance, sin(safeElevation) * distance, cos(angle) * cos(safeElevation) * distance], relativeTo: nil)
         player.isEnabled = model.location != nil
-        if let location = model.location { player.position = point(location.coordinate) + [0, 4, 0] }
+        if let location = model.location {
+            var ground = point(location.coordinate)
+            ground.y = terrain.terrainHeight(at: ground)
+            player.position = ground
+            player.orientation = terrain.buildingPlacement(
+                location.coordinate, halfWidth: 4.7, halfDepth: 7.5, rotation: 0
+            ).orientation
+        }
         for character in BaduyCharacter.allCases {
             let coordinate = model.coordinate(for: character)
             characters[character]?.isEnabled = coordinate != nil
-            if let coordinate { characters[character]?.position = point(coordinate) + [0, 5, 0] }
+            if let coordinate {
+                var ground = point(coordinate)
+                ground.y = terrain.terrainHeight(at: ground)
+                characters[character]?.position = ground
+            }
         }
     }
     @discardableResult

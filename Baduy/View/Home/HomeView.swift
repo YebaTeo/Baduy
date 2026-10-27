@@ -15,18 +15,22 @@ private enum MapPalette {
 }
 
 private struct MapTopChrome: View {
+    let title: String
+    let subtitle: String
     let status: String
     @Binding var cameraMode: BaduyCameraMode
 
     var body: some View {
         VStack(spacing: 10) {
-            MapHeader(status: status)
+            MapHeader(title: title, subtitle: subtitle, status: status)
             MapModePicker(cameraMode: $cameraMode)
         }
     }
 }
 
 private struct MapHeader: View {
+    let title: String
+    let subtitle: String
     let status: String
 
     var body: some View {
@@ -39,9 +43,9 @@ private struct MapHeader: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Kanekes")
+                Text(title)
                     .font(.title3.weight(.bold))
-                Text("Leuwidamar · Lebak · Banten")
+                Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(MapPalette.ink.opacity(0.68))
             }
@@ -224,7 +228,13 @@ struct HomeView: View {
         .ignoresSafeArea()
         .overlay(alignment: .top) {
             VStack(alignment: .trailing, spacing: 12) {
-                MapTopChrome(status: model.status, cameraMode: $cameraMode)
+                MapTopChrome(
+                title: model.currentGeofence?.name ?? "Kanekes",
+                subtitle: model.currentGeofence.map { "Dalam radius · \($0.name)" }
+                    ?? "Leuwidamar · Lebak · Banten",
+                status: model.status,
+                cameraMode: $cameraMode
+            )
                 Menu {
                     ForEach(BaduyARObject.allCases) { object in
                         Button(object.title, systemImage: object.symbol) {
