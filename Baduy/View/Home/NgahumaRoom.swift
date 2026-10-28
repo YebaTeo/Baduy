@@ -17,7 +17,7 @@ struct NgahumaRoom: View {
             Color(red: 0.07, green: 0.13, blue: 0.10).ignoresSafeArea()
             if cameraReady || preview {
                 NgahumaCamera(scene: scene, preview: preview).ignoresSafeArea()
-                    .task { await scene.loadAudio() }
+                    .task { await scene.prepareAssets(); await scene.loadAudio() }
             } else {
                 VStack(spacing: 20) {
                     Image(systemName: "leaf.fill").font(.system(size: 52)).foregroundStyle(.green)
@@ -56,7 +56,14 @@ struct NgahumaRoom: View {
                         Spacer()
                         Text("\(min(scene.stage.rawValue + 1, 6))/6").font(.caption.monospacedDigit())
                     }
-                    Text(scene.instruction).font(.subheadline)
+                    if scene.loadingAssets {
+                        ProgressView("Memuat lingkungan…")
+                    } else if let error = scene.assetError {
+                        Text(error).font(.subheadline)
+                        Button("Coba lagi") { Task { await scene.prepareAssets() } }
+                    } else {
+                        Text(scene.instruction).font(.subheadline)
+                    }
                     if !scene.tracking.isEmpty { Text(scene.tracking).font(.caption).foregroundStyle(.secondary) }
                     if scene.stage == .burning {
                         ProgressView(value: scene.progress).tint(.orange)

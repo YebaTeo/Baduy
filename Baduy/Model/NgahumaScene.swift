@@ -20,6 +20,14 @@ final class NgahumaScene: NSObject, ObservableObject {
     private var soils: [ModelEntity] = []
     private var emitters: [Entity] = []
     private var completed = Set<Int>()
+    @Published private(set) var assetError: String?
+    @Published private(set) var loadingAssets = true
+    private var materials: NgahumaMaterials?
+    private var windTime: Float = 0
+    private var wildGrass: [Entity] = []
+    private var fireLight: PointLight?
+    private var fireSoundSource: Entity?
+    private var charred = Set<Int>()
     private var elapsed: Double = 0
     private var preview = false
     private var audio: AudioPlaybackController?
@@ -82,7 +90,7 @@ final class NgahumaScene: NSObject, ObservableObject {
             let cameraAnchor = AnchorEntity(world: .zero)
             cameraAnchor.addChild(camera)
             view.scene.addAnchor(cameraAnchor)
-            build(at: matrix_identity_float4x4)
+            if materials != nil { build(at: matrix_identity_float4x4) }
         } else {
             let configuration = ARWorldTrackingConfiguration()
             configuration.planeDetection = []
@@ -91,6 +99,23 @@ final class NgahumaScene: NSObject, ObservableObject {
         }
         subscription = view.scene.subscribe(to: SceneEvents.Update.self) { [weak self] event in
             MainActor.assumeIsolated { self?.update(event.deltaTime) }
+        }
+    }
+
+    func prepareAssets() async {
+        guard materials == nil else { return }
+        loadingAssets = true
+        assetError = nil
+        defer { loadingAssets = false }
+        do {
+            let loaded = try await NgahumaMaterials.load()
+            try Task.checkCancellation()
+            materials = loaded
+            if preview, anchor == nil { build(at: matrix_identity_float4x4) }
+        } catch is CancellationError {
+            return
+        } catch {
+            assetError = "Tekstur belum dapat dimuat. Ketuk coba lagi."
         }
     }
 
@@ -124,8 +149,12 @@ final class NgahumaScene: NSObject, ObservableObject {
         } else {
             plants[index].isEnabled = true
             plants[index].scale = [0.45, 0.45, 0.45]
-            for child in plants[index].children {
-                (child as? ModelEntity)?.model?.materials = [SimpleMaterial(color: .systemGreen, isMetallic: false)]
+            if let materials {
+                for clump in plants[index].children {
+                    for card in clump.children {
+                        (card as? ModelEntity)?.model?.materials = [materials.foliage(young: true)]
+                    }
+                }
             }
         }
         count = completed.count
@@ -133,7 +162,7 @@ final class NgahumaScene: NSObject, ObservableObject {
     }
 
     private func build(at transform: simd_float4x4) {
-        guard let view else { return }
+        guard let view, let materials else { return }
         let root = AnchorEntity(world: transform)
         buildSurroundings(in: root)
         for index in 0..<9 {
@@ -142,17 +171,17 @@ final class NgahumaScene: NSObject, ObservableObject {
             let angle = Float(index) / 9 * 2 * .pi
             patch.position = [sin(angle) * 2.4, 0, -cos(angle) * 2.4]
             patch.orientation = simd_quatf(angle: -angle, axis: [0, 1, 0])
-            let soil = ModelEntity(mesh: .generateBox(size: [0.91, 0.025, 0.91]), materials: [SimpleMaterial(color: UIColor(red: 0.30, green: 0.23, blue: 0.12, alpha: 1), isMetallic: false)])
+            let soil = ModelEntity(mesh: .generatePlane(width: 1.15, depth: 1.15), materials: [materials.earth()])
             soil.position.y = 0.015
             soil.generateCollisionShapes(recursive: false)
             patch.addChild(soil)
             let vegetation = Entity()
-            for stalk in 0..<12 {
-                let height = Float(0.35 + Double((stalk * 7 + index) % 8) * 0.055)
-                let blade = ModelEntity(mesh: .generateBox(size: [0.025, height, 0.045]), materials: [SimpleMaterial(color: UIColor(red: 0.47, green: 0.43 + Double(stalk % 3) * 0.05, blue: 0.18, alpha: 1), isMetallic: false)])
-                blade.position = [Float(stalk % 4) * 0.19 - 0.28, height / 2, Float(stalk / 4) * 0.24 - 0.24]
-                blade.orientation = simd_quatf(angle: Float(stalk % 3 - 1) * 0.18, axis: [0, 0, 1])
-                vegetation.addChild(blade)
+            for stalk in 0..<5 {
+                let height = Float(0.65 + Double((stalk * 7 + index) % 8) * 0.055)
+                let clump = materials.clump(height: height)
+                clump.position = [Float(stalk % 3) * 0.28 - 0.28, 0, Float(stalk / 3) * 0.35 - 0.18]
+                clump.orientation = simd_quatf(angle: Float(stalk + index) * 1.3, axis: [0, 1, 0])
+                vegetation.addChild(clump)
             }
             // One generous hit volume per plot also catches taps on the standing plants.
             patch.components.set(CollisionComponent(shapes: [.generateBox(size: [0.9, 1.3, 0.9])]))
@@ -191,42 +220,41 @@ final class NgahumaScene: NSObject, ObservableObject {
     }
 
     private func buildSurroundings(in root: Entity) {
-        // Inward-facing sky closes the camera background in every viewing direction.
-        var skyMaterial = UnlitMaterial(color: UIColor(red: 0.60, green: 0.76, blue: 0.78, alpha: 1))
+        guard let materials else { return }
+        var skyMaterial = UnlitMaterial(color: .white)
+        skyMaterial.color = .init(tint: .white, texture: .init(materials.panorama))
         skyMaterial.faceCulling = .front
         let sky = ModelEntity(mesh: .generateSphere(radius: 65), materials: [skyMaterial])
+        sky.position.y = 1.5
         root.addChild(sky)
-        let ground = ModelEntity(mesh: .generateBox(size: [100, 0.1, 100]), materials: [SimpleMaterial(color: UIColor(red: 0.30, green: 0.32, blue: 0.15, alpha: 1), isMetallic: false)])
-        ground.position.y = -0.06
-        root.addChild(ground)
+        if let terrain = try? materials.terrain() { root.addChild(terrain) }
         let sun = DirectionalLight()
-        sun.light.intensity = 1800
+        sun.light.intensity = 1400
+        sun.light.color = UIColor(red: 1, green: 0.94, blue: 0.83, alpha: 1)
+        sun.shadow = .init()
         sun.look(at: .zero, from: [8, 12, 4], relativeTo: nil)
         root.addChild(sun)
-        let trunkMesh = MeshResource.generateBox(size: [0.22, 3, 0.22])
-        let crownMesh = MeshResource.generateSphere(radius: 1)
-        let hillMesh = MeshResource.generateSphere(radius: 1)
-        for index in 0..<36 {
-            let angle = Float(index) / 36 * 2 * .pi
-            let radius: Float = 10 + Float(index % 5)
-            let tree = Entity()
-            tree.position = [sin(angle) * radius, 0, cos(angle) * radius]
-            let trunk = ModelEntity(mesh: trunkMesh, materials: [SimpleMaterial(color: UIColor(red: 0.25, green: 0.18, blue: 0.11, alpha: 1), isMetallic: false)])
-            trunk.position.y = 1.5
-            tree.addChild(trunk)
-            let crown = ModelEntity(mesh: crownMesh, materials: [SimpleMaterial(color: UIColor(red: 0.13, green: 0.27 + Double(index % 3) * 0.025, blue: 0.15, alpha: 1), isMetallic: false)])
-            crown.position.y = 3
-            crown.scale = [1.2, 1.7 + Float(index % 3) * 0.2, 1.2]
-            tree.addChild(crown)
-            root.addChild(tree)
+        // A shared material and crossed cards replace the former box stalks / sphere trees.
+        for index in 0..<110 {
+            let angle = Float(index) * 2.399963
+            let radius = 4.2 + Float(index % 19) * 0.43
+            let clump = materials.clump(height: 0.5 + Float(index % 7) * 0.12)
+            clump.position = [sin(angle) * radius, -0.09, cos(angle) * radius]
+            clump.orientation = simd_quatf(angle: angle, axis: [0, 1, 0])
+            root.addChild(clump)
+            wildGrass.append(clump)
         }
-        for index in 0..<16 {
-            let angle = Float(index) / 16 * 2 * .pi
-            let hill = ModelEntity(mesh: hillMesh, materials: [SimpleMaterial(color: UIColor(red: 0.24, green: 0.38, blue: 0.29, alpha: 1), isMetallic: false)])
-            hill.position = [sin(angle) * 34, -2, cos(angle) * 34]
-            hill.scale = [12, 6 + Float(index % 4), 10]
-            root.addChild(hill)
-        }
+        let light = PointLight()
+        light.light.color = .orange
+        light.light.intensity = 0
+        light.light.attenuationRadius = 5
+        light.position = [0, 0.6, -2.4]
+        root.addChild(light)
+        fireLight = light
+        let source = Entity()
+        source.position = [0, 0.4, -2.4]
+        root.addChild(source)
+        fireSoundSource = source
     }
 
     private func particles(kind: Int) -> ParticleEmitterComponent {
@@ -237,15 +265,19 @@ final class NgahumaScene: NSObject, ObservableObject {
         component.emissionDirection = [0, 1, 0]
         component.speed = kind == 2 ? 0.9 : 0.45
         component.speedVariation = 0.2
-        component.mainEmitter.image = particleTexture
-        component.mainEmitter.birthRate = kind == 0 ? 65 : 12
+        component.mainEmitter.image = kind == 0 ? materials?.flame : particleTexture
+        component.mainEmitter.birthRate = kind == 0 ? 24 : 12
         component.mainEmitter.lifeSpan = kind == 1 ? 2.4 : 0.9
-        component.mainEmitter.size = kind == 0 ? 0.16 : (kind == 1 ? 0.22 : 0.018)
+        component.mainEmitter.size = kind == 0 ? 0.46 : (kind == 1 ? 0.22 : 0.018)
         component.mainEmitter.sizeVariation = 0.04
         component.mainEmitter.sizeMultiplierAtEndOfLifespan = kind == 1 ? 3 : 0.1
         component.mainEmitter.opacityCurve = .quickFadeInOut
         component.mainEmitter.blendMode = kind == 1 ? .alpha : .additive
         component.mainEmitter.color = .evolving(start: .single(kind == 1 ? UIColor.gray.withAlphaComponent(0.35) : .yellow), end: .single(kind == 1 ? UIColor.lightGray.withAlphaComponent(0) : .red))
+        if kind == 0 {
+            component.mainEmitter.color = .constant(.single(.white))
+            component.mainEmitter.billboardMode = .billboardYAligned
+        }
         component.mainEmitter.acceleration = [0.08, 0.15, 0]
         component.mainEmitter.noiseStrength = 0.15
         component.mainEmitter.spreadingAngle = 0.25
@@ -261,8 +293,8 @@ final class NgahumaScene: NSObject, ObservableObject {
     }
 
     private func startAudio() {
-        guard let sound, let anchor, audio == nil else { return }
-        audio = anchor.playAudio(sound)
+        guard let sound, let fireSoundSource, audio == nil else { return }
+        audio = fireSoundSource.playAudio(sound)
         audio?.gain = muted ? -80 : -8
     }
 
@@ -274,7 +306,7 @@ final class NgahumaScene: NSObject, ObservableObject {
                 setTrackingPaused(true)
                 return
             }
-            if stage == .entering, let camera = view?.session.currentFrame?.camera {
+            if stage == .entering, materials != nil, let camera = view?.session.currentFrame?.camera {
                 // Capture the origin once; never parent the world to the moving camera.
                 // Ground height is an authored eye-height offset, not a detected floor.
                 var origin = matrix_identity_float4x4
@@ -285,18 +317,35 @@ final class NgahumaScene: NSObject, ObservableObject {
             setTrackingPaused(false)
             if stage != .entering { tracking = "" }
         }
+        windTime += Float(min(delta, 0.1))
+        for (index, clump) in wildGrass.enumerated() {
+            clump.orientation = simd_quatf(angle: Float(index) * 2.399963, axis: [0, 1, 0])
+                * simd_quatf(angle: sin(windTime * 1.3 + Float(index)) * 0.035, axis: [0, 0, 1])
+        }
         guard stage == .burning else { return }
+        fireLight?.light.intensity = 350 + 100 * sin(windTime * 13)
         if audio?.isPlaying == false { audio?.play() }
         elapsed += min(delta, 0.1)
         progress = min(elapsed / 18, 1)
+        let activePatch = min(8, Int(elapsed / 0.85))
+        fireSoundSource?.position = patches[activePatch].position + [0, 0.4, 0]
+        fireLight?.position = patches[activePatch].position + [0, 0.6, 0]
+        if elapsed > 14 { fireLight?.light.intensity *= Float(max(0, (17 - elapsed) / 3)) }
         for index in 0..<9 {
             let localTime = elapsed - Double(index) * 0.85
             for kind in 0..<3 {
                 emitters[index * 3 + kind].isEnabled = localTime > 0 && localTime < (kind == 1 ? 10 : 7)
             }
-            if localTime > 3 {
+            if localTime > 0 && localTime < 3, let materials {
+                var scorched = materials.earth()
+                let shade = CGFloat(1 - min(localTime / 3, 1) * 0.7)
+                scorched.baseColor.tint = UIColor(white: shade, alpha: 1)
+                soils[index].model?.materials = [scorched]
+                plants[index].scale.y = max(0.015, 0.12 * Float(1 - localTime / 3))
+            }
+            if localTime > 3, charred.insert(index).inserted {
                 plants[index].isEnabled = false
-                soils[index].model?.materials = [SimpleMaterial(color: UIColor(white: 0.12, alpha: 1), isMetallic: false)]
+                soils[index].model?.materials = materials.map { [$0.earth(burned: true)] } ?? []
             }
         }
         if elapsed >= 18 { finishBurn() }
@@ -314,9 +363,10 @@ final class NgahumaScene: NSObject, ObservableObject {
 
     func finishBurn() {
         guard stage == .burning else { return }
+        fireLight?.light.intensity = 0
         emitters.forEach { $0.isEnabled = false }
         plants.forEach { $0.isEnabled = false }
-        soils.forEach { $0.model?.materials = [SimpleMaterial(color: UIColor(white: 0.12, alpha: 1), isMetallic: false)] }
+        soils.forEach { $0.model?.materials = materials.map { [$0.earth(burned: true)] } ?? [] }
         audio?.stop()
         audio = nil
         completed.removeAll()
@@ -330,6 +380,10 @@ final class NgahumaScene: NSObject, ObservableObject {
         audio = nil
         anchor?.removeFromParent()
         anchor = nil
+        wildGrass.removeAll()
+        fireLight = nil
+        fireSoundSource = nil
+        charred.removeAll()
         patches.removeAll(); plants.removeAll(); soils.removeAll(); emitters.removeAll()
         completed.removeAll()
         count = 0; progress = 0; elapsed = 0
