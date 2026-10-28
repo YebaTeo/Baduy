@@ -60,9 +60,42 @@ final class HomeViewModel: NSObject, CLLocationManagerDelegate {
         let latitude = min(85, max(-85, location.coordinate.latitude + north / 111_320))
         let longitude = location.coordinate.longitude + east
             / (111_320 * cos(latitude * .pi / 180))
-        updateLocation(CLLocation(coordinate: .init(latitude: latitude,
-            longitude: (longitude + 540).truncatingRemainder(dividingBy: 360) - 180),
+        let proposed = CLLocationCoordinate2D(latitude: latitude,
+            longitude: (longitude + 540).truncatingRemainder(dividingBy: 360) - 180)
+        let snapped = snapToMappedTrail(proposed) ?? proposed
+        updateLocation(CLLocation(coordinate: snapped,
             altitude: 0, horizontalAccuracy: 1, verticalAccuracy: 1, timestamp: .now))
+    }
+
+    /// Keeps debug/dead-reckoned movement on the real GeoJSON trail network.
+    /// Projection is done in local metres, then converted back to coordinates.
+    private func snapToMappedTrail(_ coordinate: CLLocationCoordinate2D) -> CLLocationCoordinate2D? {
+        let latitudeScale = 111_320.0
+        let longitudeScale = latitudeScale * cos(coordinate.latitude * .pi / 180)
+        var best: (distance: Double, coordinate: CLLocationCoordinate2D)?
+        for trail in trails where trail.count > 1 {
+            for pair in zip(trail, trail.dropFirst()) {
+                let a = pair.0, b = pair.1
+                let ax = (a.longitude - coordinate.longitude) * longitudeScale
+                let az = (a.latitude - coordinate.latitude) * latitudeScale
+                let bx = (b.longitude - coordinate.longitude) * longitudeScale
+                let bz = (b.latitude - coordinate.latitude) * latitudeScale
+                let dx = bx - ax, dz = bz - az
+                let denominator = dx * dx + dz * dz
+                let t = denominator > 0 ? min(1, max(0, -(ax * dx + az * dz) / denominator)) : 0
+                let x = ax + dx * t, z = az + dz * t
+                let distance = hypot(x, z)
+                guard distance <= 28 else { continue }
+                let candidate = CLLocationCoordinate2D(
+                    latitude: coordinate.latitude + z / latitudeScale,
+                    longitude: coordinate.longitude + x / longitudeScale
+                )
+                if best == nil || distance < best!.distance {
+                    best = (distance, candidate)
+                }
+            }
+        }
+        return best?.coordinate
     }
 
     let interactionRadius: CLLocationDistance = 20

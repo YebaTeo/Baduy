@@ -77,6 +77,7 @@ struct BaduyMapView: UIViewRepresentable {
         private var lastPlayerCoordinate: CLLocationCoordinate2D?
         private var targetPosition: SIMD3<Float>?
         private var targetOrientation = simd_quatf()
+        private var playerHeading: Float = 0
         var selectable: [String: MapLandmark] = [:]
         private var culturalPOIs: [String: BaduyARObject] = [:]
         private var locationLabels: [Entity] = []
@@ -306,8 +307,19 @@ struct BaduyMapView: UIViewRepresentable {
             lastPlayerCoordinate = coordinate
             var ground = awsTerrain.point(coordinate)
             ground.y = awsTerrain.terrainHeight(at: ground)
+            if let previousTarget = targetPosition {
+                let movement = SIMD2<Float>(
+                    ground.x - previousTarget.x,
+                    ground.z - previousTarget.z
+                )
+                // Ignore small GPS drift so the leaf keeps facing forward
+                // while the user is standing still.
+                if simd_length(movement) >= 1.5 {
+                    playerHeading = atan2(movement.x, -movement.y)
+                }
+            }
             targetOrientation = awsTerrain.buildingPlacement(
-                coordinate, halfWidth: 4.7, halfDepth: 7.5, rotation: 0
+                coordinate, halfWidth: 4.7, halfDepth: 7.5, rotation: playerHeading
             ).orientation
             if targetPosition == nil || simd_distance(playerMarker.position, ground) > 50 {
                 playerMarker.position = ground

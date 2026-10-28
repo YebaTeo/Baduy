@@ -209,6 +209,7 @@ struct HomeView: View {
     @State private var selectedCharacter: BaduyCharacter?
     @State private var arCharacter: BaduyCharacter?
     @State private var arObject: BaduyARObject?
+    @State private var showNgahuma = false
     @State private var cameraMode: BaduyCameraMode = .topDown
     @Environment(\.scenePhase) private var scenePhase
 
@@ -218,7 +219,7 @@ struct HomeView: View {
 
     var body: some View {
         Group {
-            if arObject == nil && arCharacter == nil {
+            if arObject == nil && arCharacter == nil && !showNgahuma {
                 BaduyMapView(
                     model: model,
                     cameraMode: cameraMode,
@@ -240,7 +241,26 @@ struct HomeView: View {
                 status: model.status,
                 cameraMode: $cameraMode
             )
+                Button {
+                    joystick = .zero
+                    showNgahuma = true
+                } label: {
+                    Label("Ngahuma", systemImage: "leaf.fill")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 18)
+                        .frame(minHeight: 48)
+                        .background(Color(red: 0.18, green: 0.36, blue: 0.24), in: Capsule())
+                        .overlay { Capsule().stroke(.white.opacity(0.3), lineWidth: 1) }
+                        .shadow(color: MapPalette.ink.opacity(0.18), radius: 10, y: 4)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Buka pengalaman Ngahuma dalam AR")
                 Menu {
+                    Button("Ngahuma · Pengalaman AR", systemImage: "leaf.fill") {
+                        joystick = .zero
+                        showNgahuma = true
+                    }
                     ForEach(BaduyARObject.allCases) { object in
                         Button(object.title, systemImage: object.symbol) {
                             joystick = .zero
@@ -264,6 +284,7 @@ struct HomeView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 18)
         }
+        .fullScreenCover(isPresented: $showNgahuma) { NgahumaRoom() }
         .fullScreenCover(item: $arCharacter) { character in
             ARCharacterRoom(initialCharacter: character)
         }
@@ -294,7 +315,7 @@ struct HomeView: View {
         .onReceive(Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()) { date in
             let elapsed = date.timeIntervalSince(lastMovementTick)
             lastMovementTick = date
-            guard scenePhase == .active, selectedCharacter == nil, arCharacter == nil, arObject == nil, joystick != .zero else { return }
+            guard scenePhase == .active, selectedCharacter == nil, arCharacter == nil, arObject == nil, !showNgahuma, joystick != .zero else { return }
             model.moveDebugPlayer(east: Double(joystick.width), north: -Double(joystick.height), elapsed: elapsed)
         }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { date in
