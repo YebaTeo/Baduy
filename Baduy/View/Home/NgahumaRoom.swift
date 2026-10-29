@@ -5,9 +5,9 @@ import SwiftUI
 
 struct NgahumaRoom: View {
     @StateObject private var scene = NgahumaScene()
-    @State private var cameraReady = false
-    @State private var preview = false
-    @State private var permissionChecked = false
+    @ViewState private var cameraReady = false
+    @ViewState private var preview = false
+    @ViewState private var permissionChecked = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var phase

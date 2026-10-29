@@ -224,7 +224,7 @@ extension View {
 }
 
 private struct BaduySheetPreview: View {
-    @State private var presented = true
+    @ViewState private var presented = true
     let style: BaduySheetStyle
 
     var body: some View {
@@ -248,6 +248,3 @@ private struct BaduySheetPreview: View {
         }
     }
 }
-
-#Preview("Kain navy · drag to expand") { BaduySheetPreview(style: .navy) }
-#Preview("Kain white · drag to expand") { BaduySheetPreview(style: .white) }

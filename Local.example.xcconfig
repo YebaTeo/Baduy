@@ -1,0 +1,12 @@
+// Copy to Local.xcconfig. Only public client configuration belongs here.
+SUPABASE_HOST = your-project.supabase.co
+SUPABASE_PUBLISHABLE_KEY = your-publishable-key
+DEVELOPMENT_TEAM =
+
+// Enable only after configuring Apple Developer and Supabase Apple Auth.
+APPLE_SIGN_IN_ENABLED = NO
+// APPLE_SIGN_IN_ENTITLEMENTS = Baduy.entitlements
+
+// Optional demo booking destination. Leave blank to hide the sample booking button.
+// Digits only, including country code; use a number you have permission to test.
+GUIDE_DEMO_WHATSAPP_NUMBER =

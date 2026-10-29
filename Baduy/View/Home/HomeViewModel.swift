@@ -1,18 +1,13 @@
 import CoreLocation
 import CoreMotion
-import Observation
+import Combine
 
 @MainActor
-@Observable
-final class HomeViewModel: NSObject, CLLocationManagerDelegate {
+final class BaduyHomeViewModel: NSObject, ObservableObject, @preconcurrency CLLocationManagerDelegate {
     /// Characters stay at their spawn point while the user walks towards them.
-    private(set) var encounterOrigin: CLLocationCoordinate2D?
-    private(set) var location: CLLocation?
-    #if DEBUG
-    private(set) var isDebugMode = true
-    #else
-    private(set) var isDebugMode = false
-    #endif
+    @Published private(set) var encounterOrigin: CLLocationCoordinate2D?
+    @Published private(set) var location: CLLocation?
+    @Published private(set) var isDebugMode = false
     private var debugStart: CLLocationCoordinate2D?
     private var debugHeading: CLLocationDirection = 0
     private var debugStepCount = 0
@@ -128,7 +123,7 @@ final class HomeViewModel: NSObject, CLLocationManagerDelegate {
         return distance <= interactionRadius
     }
 
-    private(set) var status = "Waiting for location…"
+    @Published private(set) var status = "Waiting for location…"
     /// nil means no usable GPS fix; use the existing Ciboleger POI radius.
     var isAtCiboleger: Bool? {
         guard let location else { return nil }
@@ -162,21 +157,21 @@ final class HomeViewModel: NSObject, CLLocationManagerDelegate {
             }
     }
 
-    var selectedLandmark: MapLandmark?
-    var enteredLandmark: MapLandmark?
+    @Published var selectedLandmark: MapLandmark?
+    @Published var enteredLandmark: MapLandmark?
     let landmarks: [MapLandmark]
     let trails: [[CLLocationCoordinate2D]]
 
-    @ObservationIgnored private let locationManager = CLLocationManager()
-    @ObservationIgnored private let pedometer = CMPedometer()
-    @ObservationIgnored private let motionManager = CMMotionManager()
-    @ObservationIgnored private var stepArmed = true
-    @ObservationIgnored private var lastMotionStep: TimeInterval = 0
-    @ObservationIgnored private var isWalkingSimulationActive = false
-    @ObservationIgnored private var insideLandmarks: Set<String> = []
-    @ObservationIgnored private var isActive = false
+    private let locationManager = CLLocationManager()
+    private let pedometer = CMPedometer()
+    private let motionManager = CMMotionManager()
+    private var stepArmed = true
+    private var lastMotionStep: TimeInterval = 0
+    private var isWalkingSimulationActive = false
+    private var insideLandmarks: Set<String> = []
+    private var isActive = false
     /// Called once on entry; leaving the radius rearms the event.
-    @ObservationIgnored var onLandmarkEntered: ((MapLandmark) -> Void)?
+    var onLandmarkEntered: ((MapLandmark) -> Void)?
 
     init(landmarks: [MapLandmark] = [],
          trails: [[CLLocationCoordinate2D]] = []) {

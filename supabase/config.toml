@@ -1,0 +1,7 @@
+project_id = "sosmedPOC"
+[functions.username-login]
+verify_jwt = false
+[functions.apple-login]
+verify_jwt = false
+[functions.delete-account]
+verify_jwt = false

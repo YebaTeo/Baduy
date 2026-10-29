@@ -39,8 +39,8 @@ private struct WeavingInfoPage {
 struct WeavingInfoSheet: View {
     let onFinish: () -> Void
     var onObjectChange: (BaduyARObject) -> Void = { _ in }
-    @State private var pageIndex = 0
-    @State private var narrator = AVSpeechSynthesizer()
+    @ViewState private var pageIndex = 0
+    @ViewState private var narrator = AVSpeechSynthesizer()
 
     private var page: WeavingInfoPage { WeavingInfoPage.pages[pageIndex] }
     private var isLastPage: Bool { pageIndex == WeavingInfoPage.pages.count - 1 }
@@ -80,8 +80,4 @@ struct WeavingInfoSheet: View {
         speech.voice = AVSpeechSynthesisVoice(language: "id-ID")
         narrator.speak(speech)
     }
-}
-
-#Preview {
-    WeavingInfoSheet(onFinish: {})
 }

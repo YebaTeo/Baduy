@@ -6,16 +6,16 @@ import RealityKit
 /// Camera permission, object selection and native Baduy information sheets.
 struct ARObjectRoom: View {
     let initialObject: BaduyARObject
-    @State private var selection: BaduyARObject
+    @ViewState private var selection: BaduyARObject
     @StateObject private var scene = ARObjectScene()
-    @State private var cameraReady = false
-    @State private var permissionMessage: String?
-    @State private var showSettings = false
-    @State private var showInfo = false
-    @State private var infoDetent: PresentationDetent = .medium
-    @State private var infoHeight: CGFloat = 0
-    @State private var retryID = 0
-    @State private var narrator = AVSpeechSynthesizer()
+    @ViewState private var cameraReady = false
+    @ViewState private var permissionMessage: String?
+    @ViewState private var showSettings = false
+    @ViewState private var showInfo = false
+    @ViewState private var infoDetent: PresentationDetent = .medium
+    @ViewState private var infoHeight: CGFloat = 0
+    @ViewState private var retryID = 0
+    @ViewState private var narrator = AVSpeechSynthesizer()
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase

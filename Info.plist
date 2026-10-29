@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>APPLE_SIGN_IN_ENABLED</key>
+	<string>$(APPLE_SIGN_IN_ENABLED)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Baduy</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>Baduy authentication</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>baduy</string>
+			</array>
+		</dict>
+	</array>
+	<key>GUIDE_DEMO_WHATSAPP_NUMBER</key>
+	<string>$(GUIDE_DEMO_WHATSAPP_NUMBER)</string>
+	<key>SUPABASE_HOST</key>
+	<string>$(SUPABASE_HOST)</string>
+	<key>SUPABASE_PUBLISHABLE_KEY</key>
+	<string>$(SUPABASE_PUBLISHABLE_KEY)</string>
+</dict>
+</plist>

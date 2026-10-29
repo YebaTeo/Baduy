@@ -3,14 +3,14 @@ import MapKit
 import RealityKit
 
 struct CibolegerDiorama: View {
-    let model: HomeViewModel
+    @ObservedObject var model: BaduyHomeViewModel
     let position: MapCameraPosition
     let onLandmark: (MapLandmark) -> Void
     let onCharacter: (BaduyCharacter) -> Void
-    @State private var scene = DioramaScene()
-    @State private var zoom: Float = 1
-    @State private var orbitAngle: Float = 0.35
-    @State private var orbitElevation: Float = 0.85
+    @ViewState private var scene = DioramaScene()
+    @ViewState private var zoom: Float = 1
+    @ViewState private var orbitAngle: Float = 0.35
+    @ViewState private var orbitElevation: Float = 0.85
     @GestureState private var dragOffset: CGSize = .zero
     @GestureState private var pinch: CGFloat = 1
     var body: some View {
@@ -55,7 +55,7 @@ private final class DioramaScene {
     private func point(_ coordinate: CLLocationCoordinate2D) -> SIMD3<Float> {
         terrain.point(coordinate)
     }
-    func build(_ model: HomeViewModel) {
+    func build(_ model: BaduyHomeViewModel) {
         camera.camera.far = 40_000
         root.addChild(camera); root.addChild(ground); root.addChild(player)
         if terrain.available {
@@ -111,7 +111,7 @@ private final class DioramaScene {
             root.addChild(path)
         }
     }
-    func update(_ model: HomeViewModel, region: MKCoordinateRegion?, zoom: Float, angle: Float, elevation: Float) {
+    func update(_ model: BaduyHomeViewModel, region: MKCoordinateRegion?, zoom: Float, angle: Float, elevation: Float) {
         let target = point(region?.center ?? origin)
         ground.position = [target.x, -1, target.z]
         let span = Float((region?.span.latitudeDelta ?? 0.01) * 111_320)

@@ -5,9 +5,9 @@ import AVFoundation
 /// Permission and device checks happen before creating the camera-backed view.
 struct ARCharacterRoom: View {
     let initialCharacter: BaduyCharacter
-    @State private var cameraReady = false
-    @State private var message: String?
-    @State private var showSettings = false
+    @ViewState private var cameraReady = false
+    @ViewState private var message: String?
+    @ViewState private var showSettings = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase

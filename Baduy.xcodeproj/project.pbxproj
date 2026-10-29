@@ -8,6 +8,15 @@
 
 /* Begin PBXFileReference section */
 		26047B313085AEE700D71F5C /* Baduy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Baduy.app; sourceTree = BUILT_PRODUCTS_DIR; };
+8F5D3790DD42690EA1199726 = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Config.xcconfig"; sourceTree = "<group>"; };
+96556EE20029A9725BB2A57E = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Local.xcconfig"; sourceTree = "<group>"; };
+55F1F8AFA18A5917DA8CBD49 = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Local.example.xcconfig"; sourceTree = "<group>"; };
+DF73EE74302BDC27DA91CA18 = {isa = PBXFileReference; lastKnownFileType = text; path = "Info.plist"; sourceTree = "<group>"; };
+7D0C101BB2DC13111A8BDBF2 = {isa = PBXFileReference; lastKnownFileType = text; path = "Baduy.entitlements"; sourceTree = "<group>"; };
+FF5D77019C270D960C0D7A71 = {isa = PBXFileReference; lastKnownFileType = folder; path = "Tests"; sourceTree = "<group>"; };
+E4EE586562DBED03E286CBB6 = {isa = PBXFileReference; lastKnownFileType = folder; path = "supabase"; sourceTree = "<group>"; };
+FFA006D649EA00D69C557F63 = {isa = PBXFileReference; lastKnownFileType = text; path = "DEPLOYMENT.md"; sourceTree = "<group>"; };
+0E2A57E35EC24F7AD3A525CF = {isa = PBXFileReference; lastKnownFileType = text; path = "SOCIAL_INTEGRATION.md"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -31,6 +40,15 @@
 			isa = PBXGroup;
 			children = (
 				26047B333085AEE700D71F5C /* Baduy */,
+8F5D3790DD42690EA1199726,
+96556EE20029A9725BB2A57E,
+55F1F8AFA18A5917DA8CBD49,
+DF73EE74302BDC27DA91CA18,
+7D0C101BB2DC13111A8BDBF2,
+FF5D77019C270D960C0D7A71,
+E4EE586562DBED03E286CBB6,
+FFA006D649EA00D69C557F63,
+0E2A57E35EC24F7AD3A525CF,
 				26047B323085AEE700D71F5C /* Products */,
 			);
 			sourceTree = "<group>";
@@ -238,14 +256,17 @@
 		};
 		26047B3D3085AEE800D71F5C /* Debug configuration for PBXNativeTarget "Baduy" */ = {
 			isa = XCBuildConfiguration;
+            baseConfigurationReference = 8F5D3790DD42690EA1199726;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = DTTY9ZX5T4;
+				DEVELOPMENT_TEAM = Q8FV46GXD8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
+				CODE_SIGN_ENTITLEMENTS = "$(APPLE_SIGN_IN_ENTITLEMENTS)";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Kamera digunakan untuk melihat karakter, lumbung, alat pintal, dan alat tenun dalam ruang AR.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Your location moves your player on the Baduy map and detects nearby landmarks.";
 				INFOPLIST_KEY_NSMotionUsageDescription = "Baduy menggunakan sensor gerak dan kompas untuk menggerakkan posisi virtual Anda di peta.";
@@ -262,8 +283,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.academy.IKN.Baduy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_APPROACHABLE_CONCURRENCY = NO;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
@@ -273,14 +294,17 @@
 		};
 		26047B3E3085AEE800D71F5C /* Release configuration for PBXNativeTarget "Baduy" */ = {
 			isa = XCBuildConfiguration;
+            baseConfigurationReference = 8F5D3790DD42690EA1199726;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = DTTY9ZX5T4;
+				DEVELOPMENT_TEAM = Q8FV46GXD8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
+				CODE_SIGN_ENTITLEMENTS = "$(APPLE_SIGN_IN_ENTITLEMENTS)";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Kamera digunakan untuk melihat karakter, lumbung, alat pintal, dan alat tenun dalam ruang AR.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Your location moves your player on the Baduy map and detects nearby landmarks.";
 				INFOPLIST_KEY_NSMotionUsageDescription = "Baduy menggunakan sensor gerak dan kompas untuk menggerakkan posisi virtual Anda di peta.";
@@ -297,8 +321,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.academy.IKN.Baduy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_APPROACHABLE_CONCURRENCY = NO;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;

@@ -2,7 +2,7 @@ import SwiftUI
 
 struct CharacterConversationView: View {
     let character: BaduyCharacter
-    @State private var page = 0
+    @ViewState private var page = 0
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {

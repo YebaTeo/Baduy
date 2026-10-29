@@ -12,7 +12,7 @@ enum BaduyCameraMode: String, CaseIterable, Identifiable {
 
 /// PoC-C67 map renderer: procedural BaduyWorld grid, PoC texture and orbit camera.
 struct BaduyMapView: UIViewRepresentable {
-    let model: HomeViewModel
+    @ObservedObject var model: BaduyHomeViewModel
     let cameraMode: BaduyCameraMode
     let onLandmark: (MapLandmark) -> Void
     let onCharacter: (BaduyCharacter) -> Void
@@ -37,7 +37,7 @@ struct BaduyMapView: UIViewRepresentable {
         c.sceneTask = Task { @MainActor [weak c] in
             let texture = try? await TerrainTexture.make()
             guard let c else { return }
-            await c.awsTerrain.loadRemoteElevation()
+            // Use bundled terrain so the map opens offline.
             guard !Task.isCancelled, c.view != nil else { return }
             c.build(texture: texture)
         }
@@ -64,7 +64,7 @@ struct BaduyMapView: UIViewRepresentable {
 
     @MainActor final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         weak var view: ARView?; let camera = PerspectiveCamera(); var anchor = AnchorEntity(world: .zero)
-        var model: HomeViewModel
+        var model: BaduyHomeViewModel
         let onLandmark: (MapLandmark) -> Void
         let onCharacter: (BaduyCharacter) -> Void
         let onObject: (BaduyARObject) -> Void
@@ -102,7 +102,7 @@ struct BaduyMapView: UIViewRepresentable {
 
         let awsTerrain = CibolegerTerrain()
         init(
-            model: HomeViewModel,
+            model: BaduyHomeViewModel,
             cameraMode: BaduyCameraMode,
             onLandmark: @escaping (MapLandmark) -> Void,
             onCharacter: @escaping (BaduyCharacter) -> Void,

@@ -1,5 +1,6 @@
 import SwiftUI
 import RealityKit
+import Combine
 
 @MainActor
 extension BaduyCharacter {
@@ -76,9 +77,9 @@ extension BaduyCharacter {
 
 struct ARCharactersView: View {
     let initialCharacter: BaduyCharacter
-    @State private var scene = CharacterScene()
-    @State private var selected: BaduyCharacter?
-    @State private var page = 0
+    @StateObject private var scene = CharacterScene()
+    @ViewState private var selected: BaduyCharacter?
+    @ViewState private var page = 0
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -161,16 +162,15 @@ struct ARCharactersView: View {
 }
 
 @MainActor
-@Observable
-private final class CharacterScene {
+private final class CharacterScene: ObservableObject {
     let anchor = AnchorEntity(plane: .horizontal, minimumBounds: [0.1, 0.1])
-    @ObservationIgnored private let trackingSession = SpatialTrackingSession()
-    @ObservationIgnored private var stopped = false
-    var placed = false
-    private(set) var loading = true
-    private(set) var loaded: Set<BaduyCharacter> = []
-    private(set) var error: String?
-    @ObservationIgnored var subscription: EventSubscription?
+    private let trackingSession = SpatialTrackingSession()
+    private var stopped = false
+    @Published var placed = false
+    @Published private(set) var loading = true
+    @Published private(set) var loaded: Set<BaduyCharacter> = []
+    @Published private(set) var error: String?
+    var subscription: EventSubscription?
     private var roots: [BaduyCharacter: Entity] = [:]
 
     func startTracking() async {

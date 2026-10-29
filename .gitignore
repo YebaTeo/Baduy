@@ -60,3 +60,18 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+
+# Local backend configuration and build output
+Local.xcconfig
+DerivedData/
+.DS_Store
+
+# Local secrets and Supabase CLI state
+.env
+.env.*
+!.env.example
+supabase/.temp/
+supabase/.branches/
+*.p8
+*.p12
+*.mobileprovision

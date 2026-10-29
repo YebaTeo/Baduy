@@ -201,20 +201,23 @@ private extension View {
     }
 }
 
-struct HomeView: View {
-    @State private var model: HomeViewModel
-    @State private var joystick = CGSize.zero
-    @State private var lastMovementTick = Date.now
-    @State private var interactionDate = Date.now
-    @State private var selectedCharacter: BaduyCharacter?
-    @State private var arCharacter: BaduyCharacter?
-    @State private var arObject: BaduyARObject?
-    @State private var showNgahuma = false
-    @State private var cameraMode: BaduyCameraMode = .topDown
+struct BaduyExperienceView: View {
+    @StateObject private var model: BaduyHomeViewModel
+    @ViewState private var joystick = CGSize.zero
+    @ViewState private var lastMovementTick = Date.now
+    @ViewState private var interactionDate = Date.now
+    @ViewState private var selectedCharacter: BaduyCharacter?
+    @ViewState private var arCharacter: BaduyCharacter?
+    @ViewState private var arObject: BaduyARObject?
+    @ViewState private var showNgahuma = false
+    @ViewState private var cameraMode: BaduyCameraMode = .topDown
     @Environment(\.scenePhase) private var scenePhase
 
-    init(model: HomeViewModel? = nil) {
-        _model = State(initialValue: model ?? HomeViewModel(landmarks: MapLandmark.baduyPoints))
+    private let simulateLocation: Bool
+
+    init(model: BaduyHomeViewModel? = nil, simulateLocation: Bool = false) {
+        self.simulateLocation = simulateLocation
+        _model = StateObject(wrappedValue: model ?? BaduyHomeViewModel(landmarks: MapLandmark.baduyPoints))
     }
 
     var body: some View {
@@ -231,7 +234,7 @@ struct HomeView: View {
                 MapPalette.cream
             }
         }
-        .ignoresSafeArea()
+        .ignoresSafeArea(edges: .top)
         .overlay(alignment: .top) {
             VStack(alignment: .trailing, spacing: 12) {
                 MapTopChrome(
@@ -284,6 +287,31 @@ struct HomeView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 18)
         }
+        #if DEBUG
+        .overlay(alignment: .bottomTrailing) {
+            if model.isDebugMode {
+                VStack(spacing: 8) {
+                    Button("Reset position") { joystick = .zero; model.resetDebugPosition() }
+                        .font(.caption.weight(.semibold))
+                        .frame(minHeight: 44)
+                    Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                        .font(.title2)
+                        .frame(width: 90, height: 90)
+                        .background(.regularMaterial, in: Circle())
+                        .contentShape(Circle())
+                        .gesture(DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                joystick = CGSize(width: value.translation.width / 35,
+                                                  height: value.translation.height / 35)
+                            }
+                            .onEnded { _ in joystick = .zero })
+                        .accessibilityLabel("Simulated movement pad")
+                        .accessibilityHint("Drag in the direction you want to walk")
+                }
+                .padding(16)
+            }
+        }
+        #endif
         .fullScreenCover(isPresented: $showNgahuma) { NgahumaRoom() }
         .fullScreenCover(item: $arCharacter) { character in
             ARCharacterRoom(initialCharacter: character)
@@ -330,7 +358,12 @@ struct HomeView: View {
                 self.selectedCharacter = nil
             }
         }
-        .onAppear { model.start() }
+        .onAppear {
+            #if DEBUG
+            model.setDebugMode(simulateLocation)
+            #endif
+            model.start()
+        }
         .onDisappear { joystick = .zero; model.stop() }
         .onChange(of: scenePhase) { _, phase in
             joystick = .zero

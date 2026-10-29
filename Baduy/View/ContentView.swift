@@ -1,18 +1,6 @@
-//
-//  ContentView.swift
-//  Baduy
-//
-//  Created by Yeba Teo on 19/10/26.
-//
-
 import SwiftUI
 
+// Standalone local-map wrapper retained for development.
 struct ContentView: View {
-    var body: some View {
-        HomeView()
-    }
-}
-
-#Preview {
-    ContentView()
+    var body: some View { BaduyExperienceView() }
 }
